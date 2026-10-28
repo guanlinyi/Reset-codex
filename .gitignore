@@ -1,0 +1,13 @@
+config.local.json
+*通俗进展日记*.md
+HANDOFF_TECH_*.md
+runtime/
+.validation/
+__pycache__/
+*.pyc
+*.log
+build/
+dist/
+/release/Reset/
+*.spec
+.venv/

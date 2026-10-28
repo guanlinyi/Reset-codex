@@ -1,0 +1,115 @@
+﻿# Reset-codex
+
+[English](README.md) | 简体中文
+
+面向 Windows 的 Codex 额度面板与原生聊天接续工具。查看 5 小时和每周额度，在 VS Code 中继续已有任务，并按设定次数等待额度恢复后自动接续。应用界面显示为 **Reset**，默认中文，支持英文。
+
+## 开始使用
+
+[下载 Windows x64 便携包](release/Reset-codex-windows-x64.zip)
+
+1. 下载 Windows 便携包，解压后双击 `Reset.exe`。保留同目录的 `_internal` 和辅助程序；便携包已附带 Python 和 Psmux。
+2. 等待自动检查。已有 Codex 登录会直接复用，最近的本机聊天会自动列出，无需导入会话文件或填写聊天编号。
+3. 保持默认聊天或选择另一段聊天，选择允许等待额度恢复的次数，按 **启动持续推进**。随时可按 **取消持续推进**。
+
+默认恢复 **0 次**，表示当前额度耗尽后停止。选择 **1 次**，表示等待一次真实额度恢复后继续；完成任务、人工暂停或遇到需要处理的问题时会提前停止。等待期间保持系统唤醒。
+
+### 首次启动缺少环境时
+
+正常情况下无需手改配置。界面中的 **连接与启动** 只在需要处理时展开：
+
+| 界面提示 | 操作 |
+|---|---|
+| 未找到 Codex 或 VS Code | 点击“安装”；也可点击“选择程序”指定已有安装 |
+| 尚未登录 | 点击“登录 ChatGPT”，在官方浏览器页面授权一次；已登录 Codex 时自动复用 |
+| 权限标记异常 | 点击“修复软件权限”，按 Windows 提示确认 |
+| 想开机自动打开 | 打开“开机打开 Reset 和 VS Code”开关 |
+| 连接暂不可用 | 点击“重新检测”；必要时再使用可选网络设置 |
+
+安装按钮通过 Windows 包管理器安装对应程序，并在操作前确认。系统不具备包管理器时，会打开官方安装页面。Windows 的提权与官方账号授权均由使用者本人确认。
+
+开机启动只打开软件和 VS Code，不恢复对话或推进任务；仍需按启动按钮。
+
+## 网络自动识别
+
+**代理不是必需项。** 没有代理时使用直接连接；已配置环境代理或 Windows 系统代理时自动跟随。对于支持的本地代理客户端，还会发现其动态监听端口并验证官方站点的 TLS 连接，不使用固定端口、不读取代理配置文件。
+
+支持自动发现的客户端包括 Clash/Mihomo、v2ray/Xray、sing-box、Geph 等。自动识别失败且网络确实需要代理时，可以在“连接与启动”中粘贴一次 HTTP 代理地址。地址不支持内嵌账号密码。模型和分开的代理地址、端口保留在高级设置中。
+
+本地聊天目录与远程额度分别读取；额度或网络请求失败不会把已有聊天列表变成空白。
+
+## 聊天与账号的范围
+
+Reset 通过本机官方 Codex app-server 使用 Codex 已有登录，读取额度、模型和最近的 CLI 聊天标题。它不会导入网页 ChatGPT 的全部聊天，也不直接读取认证文件或聊天正文。点击开始后，任务由选中的原生 Codex 终端执行。
+
+同一聊天已有可接回的终端时会复用。终端身份不明确、存在未提交输入、需要额外授权或需要人工处理时会保守停止，不会猜测输入位置或自动批准权限请求。重启软件也不会擅自恢复持续任务。
+
+## 本机配置与隐私
+
+公开的 `config.json` 仅提供通用默认值。程序路径、模型、工作目录、代理和默认聊天均可留空。界面保存的个人覆盖项位于 `%LOCALAPPDATA%/Reset/config.local.json`，运行状态也在该本机目录中，不写入源码或便携包。
+
+已有的同目录 `config.local.json` 仍可读取，适合便携或高级用法；用户本地覆盖项优先。个人配置、认证文件、浏览器数据或运行记录不应提交到仓库。项目的 `.gitignore` 和公开内容检查覆盖常见本机文件。
+
+| 高级设置 | 说明 |
+|---|---|
+| `codex_path`、`vscode_path`、`browser_path`、`psmux_path` | 自动发现失败时指定可执行文件 |
+| `workspace` | 留空显示全部本机 CLI 聊天；填写后按目录过滤 |
+| `model`、`effort` | 留空沿用 Codex 或原聊天设置 |
+| `thread_id` | 可选默认聊天；留空选择最近可用聊天 |
+| `language` | `zh` 或 `en`，界面手动选择会在本机记忆 |
+| `recovery_limit` | 默认允许等待的恢复次数，0–100 |
+| `proxy_host`、`proxy_port` | 可选，两项同时填写；为空时自动发现或直接连接 |
+| `require_admin` | 默认检查管理员权限与实际完整性级别 |
+| `startup_delay_seconds` | 开机启动延迟，默认 10 秒 |
+| `startup_open_vscode` | 开机时是否同时打开空 VS Code 工作区 |
+
+## 开发与备用命令
+
+Windows 11 x64，Python 3.11 或更新版本。建议使用独立 Conda 环境。附带便携包使用 Python 3.12。
+
+从源码运行：
+
+```powershell
+python -m pip install -r requirements.txt
+python -B main.py
+```
+
+构建新的便携目录：
+
+```powershell
+python -m pip install -r requirements-build.txt
+python -B build.py
+```
+
+输出为 `release/Reset`。构建命令不覆盖已有目录，可用 `--output` 指定新的输出位置。`Reset.exe` 是桌面入口，`ResetTerminal.exe` 用于保留原生终端输入输出，二者共享控制逻辑。
+
+以下命令是界面操作的备用方式：
+
+```powershell
+.\ResetTerminal.exe --diagnose
+.\Reset.exe --install-startup
+.\Reset.exe --disable-startup
+```
+
+权限修复备用方式：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\repair-permissions.ps1
+```
+
+修复仅调整本软件可执行文件的完整性标记，不递归修改目录、不放宽用户目录 ACL、不修改 Codex 沙箱。脚本核验 Psmux 签名。安全标签属于本地文件系统；新生成或复制的文件可能继承目标目录的限制，修过旧副本不等于新副本已修复，也不是每次启动都要重复修复。
+
+验证源码与公开内容：
+
+```powershell
+python -B -m unittest discover -s tests -q
+python -B audit_public.py
+```
+
+状态机、取消、网络发现、配置和界面有自动化检查；完整的真实额度耗尽、等待和恢复周期仍需实机验收。Codex 升级若改变原生交互格式，软件会停止等待处理。
+
+## 许可证
+
+项目源码使用 MIT 许可证。第三方组件保留各自许可，见 `THIRD_PARTY_NOTICES.md`。Reset-codex 为独立项目，并非 OpenAI 官方应用。
+
+

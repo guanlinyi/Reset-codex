@@ -1,0 +1,17 @@
+{
+  "codex_path": "",
+  "vscode_path": "",
+  "browser_path": "",
+  "psmux_path": "",
+  "workspace": "",
+  "proxy_host": "",
+  "proxy_port": "",
+  "model": "",
+  "effort": "",
+  "thread_id": "",
+  "language": "zh",
+  "recovery_limit": 0,
+  "require_admin": true,
+  "startup_delay_seconds": 10,
+  "startup_open_vscode": true
+}

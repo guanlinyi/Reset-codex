@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="48 42 672 672">
+  <defs>
+    <linearGradient id="rear" x1="416" y1="360" x2="668" y2="250" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#eeeeef"/><stop offset=".32" stop-color="#a9aaad"/><stop offset=".7" stop-color="#606266"/><stop offset="1" stop-color="#9b9da0"/>
+    </linearGradient>
+    <linearGradient id="leftReturn" x1="91" y1="378" x2="339" y2="485" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b7b9bd"/><stop offset=".15" stop-color="#fafbfc"/><stop offset=".62" stop-color="#ffffff"/><stop offset="1" stop-color="#d3d5d8"/>
+    </linearGradient>
+    <linearGradient id="front" x1="143" y1="293" x2="625" y2="501" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c2c5c9"/><stop offset=".16" stop-color="#fff"/><stop offset=".40" stop-color="#f7f8fa"/><stop offset=".57" stop-color="#d5d7db"/><stop offset=".78" stop-color="#919499"/><stop offset="1" stop-color="#c4c7cb"/>
+    </linearGradient>
+    <linearGradient id="tip" x1="90" y1="331" x2="119" y2="383" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fafbfc"/><stop offset=".5" stop-color="#999da2"/><stop offset="1" stop-color="#e5e7e9"/>
+    </linearGradient>
+  </defs>
+  <!-- The two openings are empty geometry, with no painted backdrop or mask. -->
+  <path d="M401 364 C467 311 541 242 608 243 C658 243 689 271 681 309 C679 323 672 334 663 346 C652 318 630 313 608 314 C550 313 493 347 442 389 Z"
+        fill="url(#rear)" stroke="#d4d7db" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M90 326 C80 347 76 373 89 394 C115 439 174 456 230 448 C278 442 311 421 347 391 L389 430 C339 477 286 505 230 512 C154 520 103 494 89 457 C78 427 77 397 82 367 Z"
+        fill="url(#leftReturn)" stroke="#afb3b8" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M90 326 C92 287 125 254 170 247 C238 236 292 272 342 313 C393 356 440 405 497 438 C548 468 598 487 637 470 C665 459 679 439 683 412 L683 449 C680 486 654 506 620 512 C561 525 504 505 452 474 C398 443 355 404 308 368 C267 337 227 315 185 316 C139 316 109 336 89 363 C87 349 88 337 90 326 Z"
+        fill="url(#front)" stroke="#c3c7cc" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M681 309 C686 324 689 343 689 367 L683 449 C684 416 675 389 663 346 C673 334 679 322 681 309 Z"
+        fill="url(#rear)" stroke="#c6c9cd" stroke-width="1.1" stroke-linejoin="round"/>
+  <path d="M90 326 C86 342 85 351 89 363 C98 351 107 342 121 334 C101 345 88 364 83 386 C79 366 83 343 90 326 Z"
+        fill="url(#tip)"/>
+  <path d="M100 296 C138 238 209 238 265 265" fill="none" stroke="#fff" stroke-opacity=".72" stroke-width="1.4" stroke-linecap="round"/>
+</svg>
