@@ -191,6 +191,7 @@ class Desk:
         self.refreshing = threading.Lock()
         self.action_lock = threading.Lock()
         self.last_action = None
+        self.terminal_inventory = {'items': [], 'checked_at': None}
         # Construction never starts tasks. Only the explicit Start endpoint arms this controller.
         self.mode=ContinuousMode(NativeGoalControl(self),path=mode_path)
         from setup_actions import SetupActions
@@ -201,7 +202,7 @@ class Desk:
         processes = self.terminal.scan()
         for t in result['threads']:
             t['terminal'] = self.terminal.inspect(t['id'], processes)
-        result.update(last_action=self.last_action, automatic_recovery_enabled=self.mode.snapshot()['enabled'],
+        result.update(terminal_inventory=self.terminal_inventory,last_action=self.last_action, automatic_recovery_enabled=self.mode.snapshot()['enabled'],
                       continuous=self.mode.snapshot(),source='Codex 官方账号额度',working_directory=load()['workspace'],preferences={k:load()[k] for k in ('language','thread_id','recovery_limit')},settings=self.settings.snapshot(),setup=self.setup.snapshot())
         return result
 
@@ -221,6 +222,7 @@ class Desk:
         awake=Awake()
         try:
             while not self.stopping.is_set():
+                self.reap_closed_terminal()
                 enabled=self.mode.snapshot()['enabled']
                 try:awake.set(enabled)
                 except OSError:
@@ -231,6 +233,22 @@ class Desk:
         finally:
             self.mode.shutdown()
             awake.set(False)
+
+    def reap_closed_terminal(self):
+        snapshot=self.mode.snapshot()
+        if not snapshot.get('enabled') or not snapshot.get('native_dispatched'):return
+        tid=snapshot.get('thread_id')
+        try:record=self.terminal.load(tid)
+        except TerminalError:return
+        if not record or not record.get('display_armed') or not record.get('close_on_disconnect'):return
+        if identity_alive(record.get('shell',{})):return
+        # Psmux ends its exact session on last-client disconnect, even without Reset running.
+        # Stop the recovery controller before its next tick can reopen that conversation.
+        self.mode.cancel_event.set()
+        with self.mode.tick_lock:
+            with self.mode.lock:
+                if self.mode.state.get('run_id')==snapshot.get('run_id'):
+                    self.mode._stop('stopped','terminal_closed');self.mode.pending_pause=False
 
     def save_settings(self,values):
         if not self.action_lock.acquire(False):raise SettingsError('正在打开终端，请稍后保存设置。')
@@ -279,6 +297,51 @@ class Desk:
             self.refresh()
             # Quota updated events from our read-only engine may arrive; polling is the fallback.
             self.stopping.wait(5 if self.metadata.login_pending else 60)
+
+    def check_terminals(self):
+        threads=self.metadata.snapshot()['threads']
+        items=self.terminal.inventory(threads)
+        for item in items:
+            if item.get('thread_id') and item['name'].startswith('…'):
+                try:item['name']=self.metadata.read_title(item['thread_id'])['name']
+                except Exception:pass
+        self.terminal_inventory={'items':items,'checked_at':time.time()}
+        return self.terminal_inventory
+
+    def close_terminal(self, tid, expected, confirmed=False):
+        if confirmed is not True:
+            raise TerminalError('请先确认结束所选终端；聊天记录会保留，当前运行和未提交输入会中断。')
+        tid=thread_id(tid)
+        # Validate before cancellation, then validate again after pending dispatch completes.
+        with self.terminal.lock:self.terminal.validate_close(tid,expected)
+        with self.mode.lock:
+            if self.mode.state.get('thread_id')==tid:self.mode.cancel_event.set()
+        if not self.mode.tick_lock.acquire(timeout=30):
+            with self.mode.lock:
+                if self.mode.state.get('thread_id')==tid:
+                    self.mode._stop('needs_attention','terminal_close_unconfirmed')
+            raise TerminalError('正在处理目标，请稍后重新检查；没有结束终端。')
+        try:
+            if not self.action_lock.acquire(False):
+                raise TerminalError('正在打开终端，请稍后重新检查；没有结束终端。')
+            try:
+                with self.mode.lock:
+                    if self.mode.state.get('thread_id')==tid:
+                        self.mode.cancel_event.set()
+                        self.mode._stop('stopped','terminal_close_unconfirmed')
+                        self.mode.pending_pause=False
+                    result=self.terminal.close(tid,expected)
+                    if self.mode.state.get('thread_id')==tid:
+                        self.mode._stop('stopped','terminal_closed')
+                self.last_action=dict(result,at=time.time())
+                return result
+            finally:self.action_lock.release()
+        finally:
+            with self.mode.lock:
+                if (self.mode.state.get('thread_id')==tid and self.mode.state.get('enabled')
+                        and self.mode.cancel_event.is_set()):
+                    self.mode._stop('needs_attention','terminal_close_unconfirmed')
+            self.mode.tick_lock.release()
 
 class Server(ThreadingHTTPServer):
     daemon_threads = True
@@ -348,6 +411,10 @@ class Handler(BaseHTTPRequestHandler):
                 result = {'ok': True}
             elif self.path == '/api/terminal/open':
                 result = {'ok': True, **self.server.desk.open_terminal(data.get('thread_id'))}
+            elif self.path == '/api/terminal/check':
+                result={'ok':True,'terminal_inventory':self.server.desk.check_terminals()}
+            elif self.path == '/api/terminal/close':
+                result={'ok':True,**self.server.desk.close_terminal(data.get('thread_id'),data.get('close_token'),data.get('confirmed'))}
             elif self.path == '/api/settings':
                 result={'ok':True,'settings':self.server.desk.save_settings(data)}
                 threading.Thread(target=self.server.desk.refresh,daemon=True).start()

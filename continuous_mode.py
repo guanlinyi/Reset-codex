@@ -166,6 +166,9 @@ class ContinuousMode:
             self.state['phase']='resuming';run_id=self.state['run_id'];self.save()
         try:
             self.driver.dispatch(tid,dispatch,self.cancel_event)
+            with self.lock:
+                if self.state.get('run_id')==run_id:
+                    self.state['native_dispatched']=True;self.save()
         except Exception:
             with self.lock:
                 if self.state.get('enabled') and self.state.get('run_id')==run_id:

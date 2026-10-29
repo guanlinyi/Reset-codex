@@ -44,7 +44,15 @@ Local conversation metadata and remote quota are fetched independently. A quota 
 
 Reset uses the locally installed official Codex app-server to reuse Codex authentication and request quota, models, and recent CLI conversation titles. It does not import the full chat history from the ChatGPT website or directly open authentication files. Conversation execution stays in the selected native Codex terminal.
 
-An existing conversation terminal is reused when its identity can be verified. If terminal ownership is uncertain, input is pending, authorization is required, or another condition needs attention, Reset stops rather than guessing where to type or approving requests automatically. Restarting the app does not automatically resume continuous work.
+Use **Check running conversations** to list Reset-managed terminals, including background sessions that are no longer connected to a visible terminal. The list also reports detected external Codex processes, which are read only. A retained shell can appear after Codex has exited.
+
+**Reconnect** opens a fresh VS Code viewer attached to the original Psmux session. It can reconnect even when the previous workspace remains open but its terminal was closed; it does not start another Codex for an already-running conversation. Repeated reconnect requests can open additional VS Code viewer windows. Workspace-trust or automatic-task prompts must be reviewed by the user.
+
+**End terminal** asks for confirmation, stops continuous work for that conversation, and ends only its verified Reset-managed Psmux session. Running work and unsent terminal input are interrupted; saved conversation history and project files remain. Other VS Code windows are not closed. Refresh the running list if the process changed before confirmation.
+
+Closing the last attached conversation terminal, or the VS Code window that owns it, automatically ends that session and stops its continuous-work controller. Minimizing the window does not end it. This disconnect policy is armed only after a real attachment and is enforced by Psmux even if Reset is no longer running. Legacy sessions left by an earlier version can still be found, reconnected, or ended through the running-conversation list; reconnecting applies the new policy.
+
+If terminal ownership is uncertain, input is pending, authorization is required, or another condition needs attention, Reset stops rather than guessing where to type or approving requests automatically. Restarting the app does not automatically resume continuous work.
 
 ## Local configuration and privacy
 

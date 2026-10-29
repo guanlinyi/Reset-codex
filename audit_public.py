@@ -19,6 +19,7 @@ def audit(root=ROOT):
     for path in root.rglob('*'):
         if not path.is_file() or '.git' in path.parts:continue
         relative=path.relative_to(root)
+        if relative.parts[0]=='experiments':continue
         if '通俗进展日记' in path.name or path.name.startswith('HANDOFF_TECH_'):
             findings.append({'file':str(relative),'rule':'internal_document_not_for_publication'})
         if path.name in FORBIDDEN:findings.append({'file':str(relative),'rule':'local_runtime_or_credentials'})

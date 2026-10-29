@@ -6,6 +6,7 @@ import subprocess
 import threading
 import time
 import uuid
+import hashlib
 from pathlib import Path
 
 import psutil
@@ -184,7 +185,12 @@ class TerminalDesk:
             return {'state': 'uncertain', 'label': '终端状态暂不可确认'}
 
     def viewer(self, record, thread):
-        workspace = Path(record['workspace'])
+        # Opening an already-open workspace does not rerun folderOpen tasks.
+        # A fresh viewer attaches to the same backend, including after a panel was closed.
+        viewer_id = uuid.uuid4().hex
+        record.setdefault('close_on_disconnect',True)
+        write_json(self.path(record['thread_id']),record)
+        workspace = Path(record['directory']) / ('Viewer_'+viewer_id+'.code-workspace')
         title = str(thread.get('name') or '未命名聊天')
         # Root remains the requested working directory; only workspace JSON is written in this tool.
         doc = {'folders': [{'name': Path(thread['cwd']).name or 'Reset', 'path': thread['cwd']}],
@@ -199,18 +205,87 @@ class TerminalDesk:
                        'PSMUX_DATA_DIR': str(Path(record['directory'])/'registry'),
                        'PSMUX_CONFIG_FILE': str(Path(record['directory'])/'empty.conf'),
                        'PSMUX_NO_WARM': '1', 'TERM': 'xterm-256color', 'COLORTERM': 'truecolor',
+                       'RESET_DATA_DIR': str(self.data), 'RESET_VIEWER_ID': viewer_id,
                        'NO_COLOR': None, 'CODEX_CI': None}},
                    'problemMatcher': [], 'runOptions': {'runOn': 'folderOpen', 'instanceLimit': 1},
                    'presentation': {'reveal': 'always', 'focus': True, 'panel': 'dedicated',
                                     'echo': False, 'showReuseMessage': False}}]}}
         # Workspace and task definitions stay inside this terminal namespace.
         write_json(workspace, doc)
-        clients = self.call(record, 'list-clients', '-t', record['session']).strip()
-        args = [str(CODE)]
-        if not clients:
-            args.append('--new-window')
-        args.append(str(workspace))
+        args = [str(CODE), '--new-window', str(workspace)]
         subprocess.Popen(args, cwd=ROOT, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        return viewer_id
+
+    def viewer_connected(self, tid, viewer_id):
+        try:
+            evidence=json.loads((self.data/'viewers'/thread_id(tid)/(viewer_id+'.json')).read_text(encoding='utf-8'))
+            if evidence.get('viewer_id')!=viewer_id or not identity_alive(evidence.get('client',{})):return False
+            record=self.load(tid)
+            connected=bool(record and self.call(record,'list-clients','-t',record['session']).strip())
+            if connected and evidence.get('disconnect_policy_armed') and not record.get('display_armed'):
+                record.update(display_armed=True,display_armed_at=time.time())
+                write_json(self.path(tid),record)
+            return connected
+        except (OSError,ValueError,TypeError,TerminalError,subprocess.TimeoutExpired):
+            return False
+
+    def close_token(self, record, state):
+        value=[record['session'],record['pane'],record['shell'],state.get('identity')]
+        return hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
+
+    def inventory(self, threads, processes=None):
+        """Registry and process identities only; no terminal text or conversation bodies."""
+        processes=self.scan() if processes is None else processes
+        titles={t['id']:t for t in threads};ids=set(titles)
+        for path in (self.data/'terminals').glob('*.json'):
+            try:ids.add(thread_id(path.stem))
+            except ValueError:pass
+        for process in processes:ids.update(process.get('thread_ids',[]))
+        rows=[];identified=set()
+        for tid in sorted(ids):
+            try:record=self.load(tid)
+            except TerminalError:record=None
+            matched=any(tid in p.get('thread_ids',[]) for p in processes)
+            if not matched and (not record or not identity_alive(record.get('shell',{}))):continue
+            state=self.inspect(tid,processes)
+            if state['state']=='closed':continue
+            known=titles.get(tid,{})
+            row={'thread_id':tid,'name':known.get('name') or (record or {}).get('title') or '…'+tid[-8:],
+                 'cwd':known.get('cwd') or (record or {}).get('cwd',''),
+                 'state':state['state'],'connection':'unknown','can_open':False,'can_close':False}
+            if record and state['state'] in ('running','shell'):
+                try:row['connection']='attached' if self.call(record,'list-clients','-t',record['session']).strip() else 'background'
+                except (TerminalError,subprocess.TimeoutExpired):pass
+                row.update(can_open=True,can_close=True,close_token=self.close_token(record,state),
+                           pid=state.get('identity',record['shell'])['pid'])
+            for p in processes:
+                if tid in p.get('thread_ids',[]):identified.add(p['pid'])
+            rows.append(row)
+        for p in processes:
+            if p['pid'] not in identified:
+                rows.append({'thread_id':None,'name':'Codex · PID '+str(p['pid']),
+                             'state':'external','connection':'unknown','can_open':False,'can_close':False,'pid':p['pid']})
+        return rows
+
+    def validate_close(self, tid, expected):
+        state=self.inspect(tid);record=self.load(tid)
+        if not record or state['state'] not in ('running','shell'):
+            raise TerminalError('无法确认此终端归 Reset 管理；没有结束任何进程。')
+        if not isinstance(expected,str) or self.close_token(record,state)!=expected:
+            raise TerminalError('终端已变化，请重新检查列表后再确认；没有结束任何进程。')
+        return record
+
+    def close(self, tid, expected):
+        with self.lock:
+            record=self.validate_close(thread_id(tid),expected)
+            self.call(record,'kill-session','-t',record['session'])
+            end=time.monotonic()+5
+            while identity_alive(record['shell']) and time.monotonic()<end:time.sleep(.1)
+            if identity_alive(record['shell']):
+                raise TerminalError('已请求结束，但尚未确认终端退出；请重新检查。')
+            record['closed_at']=time.time()
+            write_json(self.path(tid),record)
+            return {'action':'closed','thread_id':tid}
 
     def _new(self, thread):
         try:
@@ -225,6 +300,8 @@ class TerminalDesk:
         # Unique session per creation attempt; no stale process is killed or replaced.
         session = 'reset_'+tid.replace('-', '')[:16]+'_'+uuid.uuid4().hex[:6]
         record = {'thread_id': tid, 'directory': str(directory), 'session': session,
+                  'close_on_disconnect': True,
+                  'title': str(thread.get('name') or ''), 'cwd': thread['cwd'],
                   'workspace': str(directory/'Terminal.code-workspace'), 'registered_at': time.time()}
         self.call(record, '-f', directory/'empty.conf', 'new-session', '-d', '-s', session,
                   '-x', '150', '-y', '42', '-c', thread['cwd'], '--', POWERSHELL, '-NoLogo', '-NoProfile')
@@ -251,7 +328,13 @@ class TerminalDesk:
                 raise TerminalError(state['label']+'；没有另开 Codex。请先在原终端核实。')
             record = self.load(tid) if state['state'] != 'closed' else self._new(thread)
             if state['state'] == 'running':
-                self.viewer(record, thread)
+                viewer_id=self.viewer(record, thread)
+                end=time.monotonic()+12
+                while time.monotonic()<end:
+                    if self.viewer_connected(tid,viewer_id):break
+                    time.sleep(.2)
+                else:
+                    return {'action':'awaiting_viewer','thread_id':tid,'identity':state['identity']}
                 return {'action': 'reused', 'message': '已请求 VS Code 接回同一个终端，没有启动新的 Codex。',
                         'identity': state['identity'], 'thread_id': tid}
             # Native shell must still be the exact one registered by this tool.
@@ -270,10 +353,10 @@ class TerminalDesk:
                     raise TerminalError('终端状态已变化；没有重建或发送命令。')
                 write_json(self.data/'terminal_attempts'/(tid+'_'+uuid.uuid4().hex+'.json'),record)
                 record=self._new(thread)
-            self.viewer(record, thread)
+            viewer_id=self.viewer(record, thread)
             end = time.monotonic()+12
             while time.monotonic() < end:
-                if self.call(record, 'list-clients', '-t', record['session']).strip():
+                if self.viewer_connected(tid,viewer_id):
                     break
                 time.sleep(.3)
             else:
