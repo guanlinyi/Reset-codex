@@ -192,6 +192,7 @@ class Desk:
         self.action_lock = threading.Lock()
         self.last_action = None
         self.terminal_inventory = {'items': [], 'checked_at': None}
+        self.background_plan = None
         # Construction never starts tasks. Only the explicit Start endpoint arms this controller.
         self.mode=ContinuousMode(NativeGoalControl(self),path=mode_path)
         from setup_actions import SetupActions
@@ -277,7 +278,7 @@ class Desk:
         finally:
             self.refreshing.release()
 
-    def open_terminal(self, tid):
+    def open_terminal(self, tid, allow_unidentified=False):
         tid = thread_id(tid)
         if not self.action_lock.acquire(False):
             raise TerminalError('正在处理一次打开请求，请稍候；不会重复打开。')
@@ -285,7 +286,8 @@ class Desk:
             # Always fetch the exact selected UUID; never silently select --last or same-title thread.
             thread = self.metadata.read_title(tid)
             options=self.settings.snapshot()['effective']
-            result = self.terminal.open(thread, options['proxy_url'],options['model'],options['effort'])
+            args=(thread,options['proxy_url'],options['model'],options['effort'])
+            result=self.terminal.open(*args,allow_unidentified=True) if allow_unidentified is True else self.terminal.open(*args)
             self.last_action = dict(result, title=thread['name'], at=time.time())
             write_json(DATA/'last_action.json', self.last_action)
             return result
@@ -308,17 +310,33 @@ class Desk:
         self.terminal_inventory={'items':items,'checked_at':time.time()}
         return self.terminal_inventory
 
-    def close_terminal(self, tid, expected, confirmed=False):
+    def close_terminal(self, tid, expected, confirmed=False, background=False):
         if confirmed is not True:
             raise TerminalError('请先确认结束所选终端；聊天记录会保留，当前运行和未提交输入会中断。')
         tid=thread_id(tid)
+        def validate():
+            record=self.terminal.validate_close(tid,expected)
+            if background and self.terminal.call(record,'list-clients','-t',record['session']).strip():
+                raise TerminalError('此终端已经连接前端，已跳过结束。')
+        def close():
+            return self.terminal.close(tid,expected,require_background=True) if background else self.terminal.close(tid,expected)
+        return self._close_target(tid,validate,close)
+
+    def close_process(self,pid,expected,confirmed=False):
+        if confirmed is not True:raise TerminalError('请先确认结束所选 Codex 进程；原来的终端窗口会保留。')
+        target=self.terminal.process_target(pid,expected)
+        ids=target.get('thread_ids',[]);tid=ids[0] if len(ids)==1 else None
+        return self._close_target(tid,lambda:self.terminal.process_target(pid,expected),
+                                  lambda:self.terminal.close_process(pid,expected))
+
+    def _close_target(self,tid,validate,close):
         # Validate before cancellation, then validate again after pending dispatch completes.
-        with self.terminal.lock:self.terminal.validate_close(tid,expected)
+        with self.terminal.lock:validate()
         with self.mode.lock:
-            if self.mode.state.get('thread_id')==tid:self.mode.cancel_event.set()
+            if tid and self.mode.state.get('thread_id')==tid:self.mode.cancel_event.set()
         if not self.mode.tick_lock.acquire(timeout=30):
             with self.mode.lock:
-                if self.mode.state.get('thread_id')==tid:
+                if tid and self.mode.state.get('thread_id')==tid:
                     self.mode._stop('needs_attention','terminal_close_unconfirmed')
             raise TerminalError('正在处理目标，请稍后重新检查；没有结束终端。')
         try:
@@ -326,12 +344,12 @@ class Desk:
                 raise TerminalError('正在打开终端，请稍后重新检查；没有结束终端。')
             try:
                 with self.mode.lock:
-                    if self.mode.state.get('thread_id')==tid:
+                    if tid and self.mode.state.get('thread_id')==tid:
                         self.mode.cancel_event.set()
                         self.mode._stop('stopped','terminal_close_unconfirmed')
                         self.mode.pending_pause=False
-                    result=self.terminal.close(tid,expected)
-                    if self.mode.state.get('thread_id')==tid:
+                    validate();result=close()
+                    if tid and self.mode.state.get('thread_id')==tid:
                         self.mode._stop('stopped','terminal_closed')
                 self.last_action=dict(result,at=time.time())
                 return result
@@ -342,6 +360,26 @@ class Desk:
                         and self.mode.cancel_event.is_set()):
                     self.mode._stop('needs_attention','terminal_close_unconfirmed')
             self.mode.tick_lock.release()
+
+    def prepare_background_close(self):
+        inventory=self.check_terminals()
+        items=[dict(item) for item in inventory['items'] if item.get('can_close') and
+               item.get('target_type')=='managed' and item.get('connection')=='background']
+        self.background_plan={'id':secrets.token_hex(16),'at':time.time(),'items':items}
+        return {'plan_id':self.background_plan['id'],'items':items}
+
+    def close_background(self,plan_id,confirmed=False):
+        plan=self.background_plan
+        if confirmed is not True or not plan or plan_id!=plan['id'] or time.time()-plan['at']>90:
+            raise TerminalError('请重新检查后台聊天并确认结束列表。')
+        self.background_plan=None;closed=[];skipped=[]
+        for item in plan['items']:
+            try:
+                self.close_terminal(item['thread_id'],item['close_token'],True,background=True)
+                closed.append({'name':item['name'],'pid':item.get('pid')})
+            except TerminalError:skipped.append({'name':item['name'],'pid':item.get('pid')})
+        self.check_terminals()
+        return {'closed':closed,'skipped':skipped}
 
 class Server(ThreadingHTTPServer):
     daemon_threads = True
@@ -410,11 +448,18 @@ class Handler(BaseHTTPRequestHandler):
                         m.list_threads(m.cursor)
                 result = {'ok': True}
             elif self.path == '/api/terminal/open':
-                result = {'ok': True, **self.server.desk.open_terminal(data.get('thread_id'))}
+                result = {'ok': True, **self.server.desk.open_terminal(data.get('thread_id'),data.get('allow_unidentified'))}
             elif self.path == '/api/terminal/check':
                 result={'ok':True,'terminal_inventory':self.server.desk.check_terminals()}
             elif self.path == '/api/terminal/close':
-                result={'ok':True,**self.server.desk.close_terminal(data.get('thread_id'),data.get('close_token'),data.get('confirmed'))}
+                close=self.server.desk.close_process if data.get('target_type')=='process' else self.server.desk.close_terminal
+                result={'ok':True,**close(data.get('pid') if data.get('target_type')=='process' else data.get('thread_id'),data.get('close_token'),data.get('confirmed'))}
+            elif self.path == '/api/terminal/view':
+                result={'ok':True,**self.server.desk.terminal.view_process(data.get('pid'),data.get('close_token'))}
+            elif self.path == '/api/terminal/background/prepare':
+                result={'ok':True,**self.server.desk.prepare_background_close()}
+            elif self.path == '/api/terminal/background/close':
+                result={'ok':True,**self.server.desk.close_background(data.get('plan_id'),data.get('confirmed'))}
             elif self.path == '/api/settings':
                 result={'ok':True,'settings':self.server.desk.save_settings(data)}
                 threading.Thread(target=self.server.desk.refresh,daemon=True).start()

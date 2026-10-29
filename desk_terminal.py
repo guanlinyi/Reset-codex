@@ -10,6 +10,7 @@ import hashlib
 from pathlib import Path
 
 import psutil
+from terminal_hosts import classify
 from terminal_permissions import process_integrity,file_integrity
 
 from app_config import ROOT,DATA,RESOURCES,binary,command,load,network_environment
@@ -66,7 +67,8 @@ def scan_codex():
             continue
         try:
             args = p.cmdline()
-            if 'app-server' in args or 'mcp-server' in args or args[1:2]==['exec-server']:
+            host=classify(args,[q.name() for q in p.parents()])
+            if host=='service':
                 continue
             ids = []
             if 'resume' in args:
@@ -83,6 +85,7 @@ def scan_codex():
                         ids=[thread_id(known['thread_id'])]
                 except (OSError,ValueError,KeyError,TypeError):pass
             found.append({'pid': p.pid, 'created': p.create_time(), 'thread_ids': ids,
+                          'host_kind':host,
                           'unidentified': not ids and 'exec' not in args})
         except (psutil.Error, OSError):
             found.append({'pid': p.pid, 'unidentified': True, 'thread_ids': []})
@@ -93,6 +96,7 @@ def register_current_client():
     tid=thread_id(os.environ.get('CODEX_THREAD_ID'))
     for p in psutil.Process().parents():
         if p.name().lower()=='codex.exe':
+            if classify(p.cmdline(),[q.name() for q in p.parents()])=='service':continue
             record={**process_identity(p.pid),'thread_id':tid,
                     'source':'codex_child_environment'}
             write_json(DATA/'known_clients'/(str(p.pid)+'.json'),record)
@@ -172,15 +176,22 @@ class TerminalDesk:
                 if outside or len(ours) > 1:
                     return {'state': 'conflict', 'label': '发现多个或其他终端持有此聊天'}
                 if ours:
-                    return {'state': 'running', 'label': '终端已打开', 'identity': {k: ours[0][k] for k in ('pid', 'created')}}
+                    state={'state': 'running', 'label': '终端已连接', 'identity': {k: ours[0][k] for k in ('pid', 'created')}}
+                    return dict(state,pid=state['identity']['pid'],can_close=True,target_type='managed',close_token=self.close_token(record,state))
                 if any(p.get('unidentified') and p['pid'] in children for p in processes):
                     return {'state': 'uncertain', 'label': '终端内 Codex 身份需核实'}
-                return {'state': 'shell', 'label': '终端保留 · Codex 已退出'}
+                state={'state':'shell','label':'空闲终端 · Codex 已退出'}
+                return dict(state,pid=record['shell']['pid'],can_close=True,target_type='managed',close_token=self.close_token(record,state))
             if matches:
-                return {'state': 'external', 'label': '已在其他终端运行'}
-            if any(p.get('unidentified') for p in processes):
-                return {'state': 'uncertain', 'label': '有未登记 Codex，需核实'}
-            return {'state': 'closed', 'label': '可新建终端'}
+                if len(matches)!=1:return {'state':'conflict','label':'此聊天由多个进程持有，请在运行列表按 PID 核对'}
+                target=matches[0]
+                return {'state': 'external', 'label': '已在其他终端运行',
+                        'target_type':'process','pid':target['pid'],
+                        'identity':{k:target[k] for k in ('pid','created')},
+                        'host_kind':target.get('host_kind','unknown'),
+                        'can_close':True,'close_token':self.process_token(target)}
+            return {'state': 'closed', 'label': '可新建终端',
+                    'unidentified_pids':[p['pid'] for p in processes if p.get('unidentified')]}
         except (TerminalError, psutil.Error, OSError, subprocess.TimeoutExpired):
             return {'state': 'uncertain', 'label': '终端状态暂不可确认'}
 
@@ -233,6 +244,32 @@ class TerminalDesk:
         value=[record['session'],record['pane'],record['shell'],state.get('identity')]
         return hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
 
+    def process_token(self, process):
+        return hashlib.sha256(json.dumps([process['pid'],process.get('created'),process.get('thread_ids',[])],sort_keys=True).encode()).hexdigest()
+
+    def process_target(self,pid,expected):
+        target=next((p for p in self.scan() if p['pid']==pid and p.get('created')),None)
+        if not target or target.get('host_kind')=='service' or self.process_token(target)!=expected or not identity_alive(target):
+            raise TerminalError('所选进程已变化，请重新检查；没有结束或打开其他进程。')
+        return target
+
+    def view_process(self,pid,expected,cwd=''):
+        target=self.process_target(pid,expected)
+        from terminal_hosts import focus
+        try:focus(target,cwd)
+        except (ValueError,OSError,psutil.Error) as exc:raise TerminalError(str(exc)) from exc
+        return {'action':'focused','pid':pid,'thread_id':next(iter(target.get('thread_ids',[])),None)}
+
+    def close_process(self,pid,expected):
+        with self.lock:
+            target=self.process_target(pid,expected)
+            process=psutil.Process(pid)
+            if not identity_alive(target):raise TerminalError('进程已退出，请重新检查。')
+            process.terminate()
+            try:process.wait(timeout=5)
+            except psutil.TimeoutExpired:raise TerminalError('已请求结束 Codex，但尚未确认退出，请重新检查。')
+            return {'action':'closed','pid':pid,'thread_id':next(iter(target.get('thread_ids',[])),None)}
+
     def inventory(self, threads, processes=None):
         """Registry and process identities only; no terminal text or conversation bodies."""
         processes=self.scan() if processes is None else processes
@@ -257,14 +294,20 @@ class TerminalDesk:
                 try:row['connection']='attached' if self.call(record,'list-clients','-t',record['session']).strip() else 'background'
                 except (TerminalError,subprocess.TimeoutExpired):pass
                 row.update(can_open=True,can_close=True,close_token=self.close_token(record,state),
+                           target_type='managed',
                            pid=state.get('identity',record['shell'])['pid'])
+            elif state['state']=='external' and state.get('identity'):
+                row.update(can_open=True,can_close=True,close_token=state['close_token'],
+                           target_type='process',pid=state['pid'],host_kind=state.get('host_kind','unknown'))
             for p in processes:
                 if tid in p.get('thread_ids',[]):identified.add(p['pid'])
             rows.append(row)
         for p in processes:
             if p['pid'] not in identified:
                 rows.append({'thread_id':None,'name':'Codex · PID '+str(p['pid']),
-                             'state':'external','connection':'unknown','can_open':False,'can_close':False,'pid':p['pid']})
+                             'state':'external','connection':'unknown','can_open':bool(p.get('created')),
+                             'can_close':bool(p.get('created')),'pid':p['pid'],'target_type':'process',
+                             'close_token':self.process_token(p),'host_kind':p.get('host_kind','unknown')})
         return rows
 
     def validate_close(self, tid, expected):
@@ -275,9 +318,11 @@ class TerminalDesk:
             raise TerminalError('终端已变化，请重新检查列表后再确认；没有结束任何进程。')
         return record
 
-    def close(self, tid, expected):
+    def close(self, tid, expected, require_background=False):
         with self.lock:
             record=self.validate_close(thread_id(tid),expected)
+            if require_background and self.call(record,'list-clients','-t',record['session']).strip():
+                raise TerminalError('此终端已经连接前端，已跳过结束。')
             self.call(record,'kill-session','-t',record['session'])
             end=time.monotonic()+5
             while identity_alive(record['shell']) and time.monotonic()<end:time.sleep(.1)
@@ -312,7 +357,7 @@ class TerminalDesk:
         write_json(self.path(tid), record)
         return record
 
-    def open(self, thread, proxy, model='', effort=''):
+    def open(self, thread, proxy, model='', effort='', allow_unidentified=False):
         global CODE,CODEX,PSMUX
         CODE=binary('vscode');CODEX=binary('codex');PSMUX=binary('psmux')
         tid = thread_id(thread['id'])
@@ -324,8 +369,11 @@ class TerminalDesk:
         thread = dict(thread, id=tid, cwd=cwd)
         with self.lock:
             state = self.inspect(tid)
-            if state['state'] in ('external', 'conflict', 'uncertain'):
+            if state['state']=='external':return self.view_process(state['pid'],state['close_token'],cwd)
+            if state['state'] in ('conflict', 'uncertain'):
                 raise TerminalError(state['label']+'；没有另开 Codex。请先在原终端核实。')
+            if state['state']=='closed' and state.get('unidentified_pids') and allow_unidentified is not True:
+                return {'action':'confirm_new','thread_id':tid,'unidentified_pids':state['unidentified_pids']}
             record = self.load(tid) if state['state'] != 'closed' else self._new(thread)
             if state['state'] == 'running':
                 viewer_id=self.viewer(record, thread)

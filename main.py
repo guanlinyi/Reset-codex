@@ -59,6 +59,12 @@ def main():
     if args.autostart:
         from startup import launch
         return launch()
+    # Reuse only our own native ancestor's exported thread identity. Never inspect another process environment.
+    if os.environ.get('CODEX_THREAD_ID'):
+        try:
+            from desk_terminal import register_current_client
+            register_current_client()
+        except Exception:pass
     from quota_desk import main as desktop
     return desktop(['--headless'] if args.headless else ['--open'])
 

@@ -44,11 +44,19 @@ Local conversation metadata and remote quota are fetched independently. A quota 
 
 Reset uses the locally installed official Codex app-server to reuse Codex authentication and request quota, models, and recent CLI conversation titles. It does not import the full chat history from the ChatGPT website or directly open authentication files. Conversation execution stays in the selected native Codex terminal.
 
-Use **Check running conversations** to list Reset-managed terminals, including background sessions that are no longer connected to a visible terminal. The list also reports detected external Codex processes, which are read only. A retained shell can appear after Codex has exited.
+Each conversation row has **View** and **End** controls. View reconnects an existing Reset terminal, returns to a uniquely identified external terminal window, or opens a new terminal when the conversation is not running. End is disabled when there is no running target to stop.
+
+Use **Check running conversations** to list Reset-managed terminals and detected external chat processes. Each PID is shown with its conversation title when an exact identity is available. Codex app-server, MCP, execution-service, and application-internal processes are filtered separately from chat terminals. Ordinary VS Code terminals and Psmux-hosted sessions are distinguished; an unrelated unidentified process does not disable all conversation rows. A retained shell can appear after Codex has exited.
+
+Explicit resume IDs and the current native ancestor's exported identity can associate a process with its title. If a process has no confirmed conversation identity, the list states that clearly. Reset does not guess from the most recent title. If a new terminal could duplicate an unidentified existing conversation, View asks for confirmation instead of disabling the button or silently starting a duplicate.
 
 **Reconnect** opens a fresh VS Code viewer attached to the original Psmux session. It can reconnect even when the previous workspace remains open but its terminal was closed; it does not start another Codex for an already-running conversation. Repeated reconnect requests can open additional VS Code viewer windows. Workspace-trust or automatic-task prompts must be reviewed by the user.
 
 **End terminal** asks for confirmation, stops continuous work for that conversation, and ends only its verified Reset-managed Psmux session. Running work and unsent terminal input are interrupted; saved conversation history and project files remain. Other VS Code windows are not closed. Refresh the running list if the process changed before confirmation.
+
+For an external conversation, **End** stops the selected Codex PID after checking its creation time and identity; its original terminal or VS Code window remains. View does not start a second Codex when a matching process exists. If its original window cannot be uniquely located, Reset explains how to end that process and reopen the conversation through Reset. Continuous work requires a Reset-managed terminal.
+
+**End all background chats** first shows titles and PIDs for confirmation. It includes only Reset-managed sessions confirmed to have no connected frontend. Connected, unidentified, external, and internal-service processes are not included. The connection and identity are checked again before each close; reconnected or changed targets are skipped. Plans expire after 90 seconds and cannot be replayed.
 
 Closing the last attached conversation terminal, or the VS Code window that owns it, automatically ends that session and stops its continuous-work controller. Minimizing the window does not end it. This disconnect policy is armed only after a real attachment and is enforced by Psmux even if Reset is no longer running. Legacy sessions left by an earlier version can still be found, reconnected, or ended through the running-conversation list; reconnecting applies the new policy.
 
