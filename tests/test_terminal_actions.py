@@ -52,7 +52,7 @@ class TargetTests(unittest.TestCase):
         self.assertTrue(all(c.args[0]['id']==other for c in new.call_args_list))
 
     def test_external_chat_is_not_focused_or_duplicated(self):
-        with patch('desk_terminal.binary',return_value=Path(__file__)),patch('desk_terminal.identity_alive',return_value=True),patch('terminal_hosts.focus') as focus,patch.object(self.terminal,'_new') as new:
+        with patch('desk_terminal.binary',return_value=Path(__file__)),patch('desk_terminal.identity_alive',return_value=True),patch('desk_panel.show_own_window') as focus,patch.object(self.terminal,'_new') as new:
             with self.assertRaisesRegex(TerminalError,'Reset 以外'):
                 self.terminal.open({'id':TID,'name':'Example','cwd':str(self.root)},'')
         focus.assert_not_called();new.assert_not_called()

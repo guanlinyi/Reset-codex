@@ -187,7 +187,7 @@ class TerminalDesk:
                 raise ValueError('namespace outside project terminal registry')
             if not re.fullmatch(r'[a-zA-Z0-9_\-]+', record['session']):
                 raise ValueError('invalid session name')
-            if not Path(record['workspace']).resolve().is_relative_to(directory):
+            if 'workspace' in record and not Path(record['workspace']).resolve().is_relative_to(directory):
                 raise ValueError('workspace outside terminal namespace')
             if not re.fullmatch(r'%\d+', str(record.get('pane', ''))):
                 raise ValueError('invalid pane identity')
@@ -354,7 +354,7 @@ class TerminalDesk:
         record = {'thread_id': tid, 'directory': str(directory), 'session': session,
                   'close_on_disconnect': True,
                   'title': str(thread.get('name') or ''), 'cwd': thread['cwd'],
-                  'workspace': str(directory/'Terminal.code-workspace'), 'registered_at': time.time()}
+                  'registered_at': time.time()}
         self.call(record, '-f', directory/'empty.conf', 'new-session', '-d', '-s', session,
                   '-x', '150', '-y', '42', '-c', thread['cwd'], '--', POWERSHELL, '-NoLogo', '-NoProfile')
         time.sleep(.4)

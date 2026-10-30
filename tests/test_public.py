@@ -36,16 +36,17 @@ class SafetyTests(unittest.TestCase):
             with self.assertRaises(TerminalError):terminal._new({'id':str(uuid.UUID(int=1)),'cwd':str(app_config.ROOT)})
             call.assert_not_called()
     def test_startup_only_opens_apps(self):
-        with patch.object(startup,'open_editor') as editor,patch('quota_desk.main') as desktop,patch('quota_desk.Desk.open_terminal') as native:
+        with patch.object(startup.subprocess,'Popen') as editor,patch('quota_desk.main') as desktop,patch('quota_desk.Desk.open_terminal') as native:
             startup.launch()
             editor.assert_not_called();desktop.assert_called_once_with(['--open']);native.assert_not_called()
-    def test_ui_workspace_has_no_autorun_task(self):
+    def test_legacy_editor_settings_do_not_launch_editor(self):
         directory=app_config.DATA/'tests'/uuid.uuid4().hex
-        with patch.object(startup,'DATA',directory),patch.object(startup,'binary',return_value=Path('code.exe')),patch.object(startup.subprocess,'Popen'):
-            startup.open_editor()
-        doc=json.loads((directory/'startup.code-workspace').read_text(encoding='utf-8'))
-        self.assertNotIn('tasks',doc)
-        self.assertNotIn('resume',json.dumps(doc))
+        directory.mkdir(parents=True,exist_ok=True)
+        (directory/'config.local.json').write_text(json.dumps({'vscode_path':'unused-editor.exe','startup_open_vscode':True}),encoding='utf-8')
+        with patch.object(app_config,'ROOT',directory),patch.object(app_config,'DATA',directory),patch('quota_desk.main') as desktop,patch.object(startup.subprocess,'Popen') as editor:
+            self.assertTrue(app_config.load()['startup_open_vscode'])
+            startup.launch()
+        desktop.assert_called_once_with(['--open']);editor.assert_not_called()
     def test_local_service_rejects_cross_origin(self):
         from quota_desk import Handler
         request=Mock();request.headers={'Host':'127.0.0.1:12345','X-Reset-Desk':'nonce','Origin':'https://example.invalid'}

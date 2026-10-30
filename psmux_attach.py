@@ -24,16 +24,15 @@ def main():
     if not record:
         raise RuntimeError('没有找到此聊天的终端登记；没有启动新的 Codex。')
     env=service.env(record)
-    # VS Code's env:null is not sufficient evidence that an already-running task was scrubbed.
-    # Build the final client environment here, after any editor/task environment processing.
+    # Scrub noninteractive flags at the final visible terminal-client boundary.
     for key in ('NO_COLOR','CODEX_CI','CLICOLOR','CLICOLOR_FORCE','FORCE_COLOR'):
         env.pop(key,None)
-    env.update(TERM='xterm-256color',COLORTERM='truecolor',TERM_PROGRAM='vscode')
+    env.update(TERM='xterm-256color',COLORTERM='truecolor',TERM_PROGRAM='Windows_Terminal')
     write_json(service.data/'client_env_evidence.json',{
         'at':time.time(),'thread_id':tid,'wrapper_pid':os.getpid(),
         'NO_COLOR_present':'NO_COLOR' in env,'CODEX_CI_present':'CODEX_CI' in env,
         'TERM':env['TERM'],'COLORTERM':env['COLORTERM']})
-    # No captured pipes and no hidden engine: inherit VS Code's actual terminal stdio.
+    # Inherit Windows Terminal's actual terminal stdio; never capture the client pipes.
     child=subprocess.Popen([str(PSMUX),'attach','-t',record['session']],env=env)
     viewer_id=os.environ.get('RESET_VIEWER_ID','')
     connected=False;end=time.monotonic()+8

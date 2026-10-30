@@ -11,7 +11,7 @@ The current Windows build has passed initial user acceptance for the interface a
 
 ## Automated and synthetic checks
 
-- All 104 public automated checks pass. They cover configuration/privacy defaults, quota state transitions, cancellation, terminal ownership, exact close targets, duplicate guards, detach policy, file-handle identity inference, message submission and update handling.
+- All 83 current automated checks pass. They cover configuration/privacy defaults, quota state transitions, cancellation, terminal ownership, exact close targets, duplicate guards, detach policy, file-handle identity inference, message submission and update handling.
 - Message tests cover overlay goal prompts, unchecked automatic handling, editable multiline instructions, Enter submission, a retained exact draft, retrying Enter without typing a duplicate message, and failure when submission remains unconfirmed.
 - Update tests cover a supported official picker, success followed by the same session ID, disabled automatic updates, failures, timeouts and repeated-prompt prevention. Update commands and power actions are mocked in tests.
 - Synthetic browser checks verify default checked options, editable instructions, request parameters, Chinese/English switching and a narrow-window layout. Rendered interface screenshots were visually inspected.

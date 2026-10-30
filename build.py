@@ -21,7 +21,7 @@ def main():
     spec=work/'Reset.spec'
     spec.write_text('''from pathlib import Path
 root=Path(ROOT_PATH)
-a=Analysis([str(root/'main.py')],pathex=[str(root)],binaries=[],datas=[(str(root/'assets'),'assets'),(str(root/'fonts'),'fonts'),(str(root/'desk_ui'),'desk_ui'),(str(root/'vendor'),'vendor')],hiddenimports=[],hookspath=[],runtime_hooks=[],excludes=['tkinter','PIL','numpy','pandas','torch','playwright'],noarchive=False,optimize=1)
+a=Analysis([str(root/'main.py')],pathex=[str(root)],binaries=[],datas=[(str(root/'assets'),'assets'),(str(root/'fonts'),'fonts'),(str(root/'desk_ui'),'desk_ui'),(str(root/'vendor/psmux'),'vendor/psmux')],hiddenimports=[],hookspath=[],runtime_hooks=[],excludes=['tkinter','PIL','numpy','pandas','torch','playwright'],noarchive=False,optimize=1)
 pyz=PYZ(a.pure)
 desktop=EXE(pyz,a.scripts,[],exclude_binaries=True,name='Reset',debug=False,strip=False,upx=False,console=False,icon=str(root/'assets'/'reset.ico'))
 terminal=EXE(pyz,a.scripts,[],exclude_binaries=True,name='ResetTerminal',debug=False,strip=False,upx=False,console=True,icon=str(root/'assets'/'reset.ico'))
@@ -31,6 +31,9 @@ collection=COLLECT(desktop,terminal,a.binaries,a.datas,strip=False,upx=False,nam
     bundle=output/'Reset'
     for name in ('config.json','repair-permissions.ps1','README.md','README.zh-CN.md','LICENSE','THIRD_PARTY_NOTICES.md','VALIDATION.md'):
         (bundle/name).write_bytes((ROOT/name).read_bytes())
+    images=bundle/'docs/images'
+    images.mkdir(parents=True,exist_ok=True)
+    for image in (ROOT/'docs/images').glob('*.png'):(images/image.name).write_bytes(image.read_bytes())
     for path in (ROOT/'licenses').glob('*.txt'):(bundle/path.name).write_bytes(path.read_bytes())
     print(json.dumps({'portable_directory':str(bundle),'entry':'Reset.exe','terminal_helper':'ResetTerminal.exe'}))
 

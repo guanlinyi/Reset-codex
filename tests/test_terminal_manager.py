@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 from app_config import DATA
 from desk_terminal import TerminalDesk, TerminalError, write_json
 from quota_desk import Desk
-from continuous_mode import ContinuousMode
+from message_mode import ContinuousMode
 from psmux_attach import arm_disconnect_policy
 
 TID=str(uuid.UUID(int=15))

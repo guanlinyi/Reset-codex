@@ -1,10 +1,8 @@
 """Explicit optional logon registration; startup opens apps and never a conversation."""
-import json
-from pathlib import Path
 import subprocess
 import xml.etree.ElementTree as ET
 from string import Template
-from app_config import ROOT,DATA,command,load,binary
+from app_config import ROOT,command,load
 
 TASK='ResetDesktop'
 
@@ -22,14 +20,6 @@ def enabled():
                 tree.findtext('.//t:Settings/t:Enabled',default='true',namespaces=ns)!='false')
     except (ValueError,UnicodeError):return False
 
-def open_editor():
-    folder=load()['workspace']
-    workspace=DATA/'startup.code-workspace'
-    workspace.parent.mkdir(parents=True,exist_ok=True)
-    workspace.write_text(json.dumps({'folders':[{'path':folder}] if folder else [],
-        'settings':{'window.title':'Reset · VS Code','terminal.integrated.enablePersistentSessions':False}},ensure_ascii=False),encoding='utf-8')
-    subprocess.Popen([str(binary('vscode',True)),'--new-window',str(workspace)],cwd=ROOT,
-        stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=subprocess.CREATE_NO_WINDOW)
 
 def register(enabled=True):
     # The task is deliberately named separately from development installations.

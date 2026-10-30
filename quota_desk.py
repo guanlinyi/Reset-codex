@@ -166,16 +166,7 @@ class Metadata:
             os.startfile(url)
             self.login_pending=True
 
-    def goal_state(self,tid):
-        with self.lock:
-            self.connect()
-            goal=self.rpc.call('thread/goal/get',{'threadId':thread_id(tid)},timeout=8).get('goal')
-            return {'exists':goal is not None,'status':goal.get('status') if goal else None}
 
-    def pause_goal(self,tid,origin='user'):
-        with self.lock:
-            self.connect()
-            return self.rpc.call('thread/goal/set',{'threadId':thread_id(tid),'status':'paused','origin':origin},timeout=8)
 
     def close(self):
         with self.lock:

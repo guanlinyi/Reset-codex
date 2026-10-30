@@ -12,7 +12,7 @@ RESOURCES=Path(getattr(sys,'_MEIPASS',ROOT))
 DATA=Path(os.environ.get('RESET_DATA_DIR') or (Path(os.environ.get('LOCALAPPDATA',Path.home()))/'Reset'))
 DEFAULTS={'windows_terminal_path':'','codex_path':'','vscode_path':'','browser_path':'','psmux_path':'','workspace':'',
           'proxy_host':'','proxy_port':'','model':'','effort':'','thread_id':'','language':'zh',
-          'recovery_limit':0,'require_admin':True,'startup_delay_seconds':10,'startup_open_vscode':True}
+          'recovery_limit':0,'require_admin':True,'startup_delay_seconds':10,'startup_open_vscode':False}
 
 def load():
     values=dict(DEFAULTS)
@@ -81,11 +81,6 @@ def binary(kind,required=False):
             found=shutil.which('wt.exe')
             if found:candidates.append(Path(found))
             candidates.append(Path(os.environ.get('LOCALAPPDATA',''))/'Microsoft/WindowsApps/wt.exe')
-        elif kind=='vscode':
-            found=shutil.which('code.cmd')
-            if found:candidates.append(Path(found).parent.parent/'Code.exe')
-            candidates += [Path(os.environ.get('LOCALAPPDATA',''))/'Programs'/'Microsoft VS Code'/'Code.exe']
-            candidates += [Path(os.environ.get('ProgramFiles',''))/'Microsoft VS Code'/'Code.exe']
         elif kind=='browser':
             for base in ('ProgramFiles','ProgramFiles(x86)','LOCALAPPDATA'):
                 folder=Path(os.environ.get(base,''))

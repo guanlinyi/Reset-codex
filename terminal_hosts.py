@@ -41,14 +41,3 @@ def windows_for(identity,cwd=''):
         matching=[w for w in found if Path(cwd).name.casefold() in w['title'].casefold()]
         if len(matching)==1:return matching
     return found
-
-def focus(identity,cwd=''):
-    windows=windows_for(identity,cwd)
-    if len(windows)!=1:
-        raise ValueError('无法唯一定位原来的终端窗口；请在运行列表核对并结束该进程后重新打开，未新建重复 Codex。')
-    # The PID/create-time and ancestor host were verified; this is a user-clicked action.
-    user=ctypes.WinDLL('user32',use_last_error=True)
-    user.ShowWindow.argtypes=[ctypes.c_void_p,ctypes.c_int]
-    user.SetForegroundWindow.argtypes=[ctypes.c_void_p]
-    user.ShowWindow(windows[0]['hwnd'],9)
-    user.SetForegroundWindow(windows[0]['hwnd'])
