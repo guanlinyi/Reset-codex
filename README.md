@@ -2,50 +2,84 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Windows 11 quota dashboard and continuation tool for Codex. Monitor five-hour and weekly limits, manage native Codex terminals through Psmux, and continue work after quota recovery. The app is named **Reset**, defaults to Chinese, and supports English. VS Code is not required.
+Reset is a Windows 11 tool for checking Codex quota and continuing tasks. View remaining quota, open existing conversations, and continue work after quota recovery. The interface defaults to Chinese and also supports English.
 
 ## Get started
 
-[Download the Windows x64 portable package](release/Reset-codex-windows-x64.zip)
+[Download the Windows x64 portable package](release/Reset-codex-windows-x64.zip), extract it, and double-click `Reset.exe`. Keep the helper executable and `_internal` alongside it. Python and Psmux are included.
 
-1. Extract the package and double-click `Reset.exe`. Keep the helper executable and `_internal` alongside it. Python and Psmux are included.
-2. Wait for automatic checks. Reset reuses an existing Codex sign-in and lists recent local CLI conversations by title and full session ID. Use **Connection & startup** to install or locate Codex and Windows Terminal when missing.
-3. Keep the default conversation or select another one, then click **View**. The native chat opens in a black Windows Terminal window.
-4. Edit the **Continuation message** if needed, choose how many quota recoveries to wait for, and click **Start continuous work**. Reset inputs and submits the message automatically. Subsequent recovery rounds use the same message.
+Reset checks for Codex, an existing sign-in, and recent local conversations automatically. The sections below follow the interface order.
 
-The prefilled message is:
+Screenshots below use example data.
+
+## 0. Connection & startup
+
+![0. Connection & startup](docs/images/setup-en.png)
+
+Click **＋** to expand this section. Check Codex, Windows Terminal, sign-in and permissions here. Install a missing program or select an existing installation. Click **Sign in with ChatGPT** if needed; an existing Codex sign-in is reused.
+
+Enable **Open Reset at sign-in** to start the app after Windows login. This opens Reset only. It does not restore a chat or submit a task.
+
+## 1. Available quota
+
+![1. Available quota](docs/images/quota-en.png)
+
+Check the five-hour and weekly limits here. Progress bars show what remains, with estimated reset times. Click **Refresh quota** in the top-right corner to check again.
+
+Local conversations still appear if quota is temporarily unavailable.
+
+## 2. Running conversations
+
+![2. Running conversations](docs/images/running-en.png)
+
+This section lists terminals managed by Reset through Psmux, with conversation titles, session IDs, PIDs and connection status. **View** returns to the existing terminal. **End** closes that terminal and stops its continuation controller; saved conversation history remains.
+
+Click **Check terminals** to refresh the list. **End background chats** closes only confirmed detached sessions and asks for confirmation first. Ordinary terminals opened outside Reset are not included in this managed list.
+
+## 3. Select conversation
+
+![3. Select conversation](docs/images/conversations-en.png)
+
+The most recent usable conversation is selected by default. Search by title or session ID, select a conversation, and click **View**. Codex opens in a black Windows Terminal window, managed by Psmux. VS Code is not required.
+
+If the conversation is already running in Reset, View reconnects it rather than opening another copy. If the same session is identified in an external terminal, Reset asks you to close the original Codex before opening it here.
+
+Choose a model here if you want to change it. Leave the selector unchanged to keep the conversation's own model.
+
+## 4. Continuous work
+
+![4. Continuous work](docs/images/continuous-en.png)
+
+Click **Start continuous work** to send a continuation instruction to the selected Codex conversation. Reset presses Enter automatically. The **Continuation message** field is prefilled and editable, up to 2000 characters:
 
 > 持续推进至额度耗尽，确认独立任务结束后保存交接
 
-It asks Codex to continue until quota exhaustion and save a handoff after completing independent tasks. Replace it with your own instruction, up to 2000 characters. The optional model selector changes the model only when explicitly selected; otherwise the conversation keeps its own model.
+The default asks Codex to continue until quota exhaustion and save a handoff after completing independent tasks. You can replace it with an instruction in your own language.
 
-## Continuous work
+Codex may show a goal-resume or update prompt when a chat opens. Both handling options are checked by default:
 
-- **Recoveries default to 0:** stop automation when the current quota runs out. Choose 1 to wait for one confirmed five-hour quota recovery and continue for one more round. Each recovery submits the message once. A countdown alone does not prove recovery.
-- **Dismiss the goal-resume prompt by default:** select `Leave paused`, then submit the continuation message. Uncheck this option to handle the prompt manually.
-- **Update Codex automatically by default:** handle a recognized official update picker, confirm success and the old Codex process exiting, then resume the original session ID in the same Psmux terminal before submitting the message. Uncheck to handle updates manually. Unsupported menus, failures and timeouts stop automation rather than retrying indefinitely.
-- **Shutdown defaults to off:** when enabled, the final quota exhaustion and an idle terminal start a cancellable 60-second countdown. Quota is checked again before shutdown. With 0 recoveries, shutdown follows the current round; with 1, it follows the final round after one recovery.
-- **Cancel continuous work:** stop future continuation and shutdown. Already submitted Codex work keeps running. Use the conversation's **End** control to stop its terminal and work.
+- **Automatically dismiss the goal-resume prompt:** select `Leave paused`, then send the message.
+- **Automatically update Codex when prompted:** update, reopen the original conversation, then send the message.
 
-Reset keeps the computer awake while continuous mode is active. Closing a terminal, shutting down Windows, permission prompts or other conditions requiring attention can interrupt the workflow. Restarting Reset does not automatically restart continuous work. A complete real-account exhaustion → waiting → recovery cycle still requires further live validation; see [Validation scope](VALIDATION.md).
+Uncheck an option to handle that prompt yourself in the terminal, then click **Start continuous work**.
 
-## Terminal management
+The recovery count defaults to **0**: stop automation when the current quota runs out. Choose **1** to wait for one recovery and continue for another round, or **2** for two recoveries. Each round uses the configured message, and recovery must be confirmed before it is sent.
 
-**View** reconnects an existing Reset-managed Psmux conversation or creates a terminal when it is not running. Launches for the same session ID are serialized. An attached session uses its existing window rather than starting another Codex.
+Enable **Shut down after the final quota round** if needed. With 0 recoveries, shutdown follows the current round. With 1, it follows the final round after one recovery. Reset waits for an idle terminal, then starts a cancellable 60-second countdown.
 
-**Running conversations** lists managed Psmux terminals with titles, full session IDs, PIDs and connection status. **End** asks for confirmation, stops that conversation's continuation controller and closes its terminal while preserving saved history. Batch end includes only confirmed detached sessions and rechecks their identities before closing; reconnected or changed targets are skipped.
+Click **Cancel continuous work** at any time to stop future continuation and shutdown. Work already submitted keeps running in Codex. Use the conversation's **End** button to close its terminal.
 
-External conversations are identified using launch arguments, registered identities and persistently held writable session-file handles. This inspects filenames and handle permissions, not file contents. If the selected conversation is identified in an external terminal, Reset asks you to close the original Codex first. Unidentified unrelated processes do not block every conversation. Permissions, custom data directories and unsupported clients can limit detection.
+## 5. Network settings
 
-Closing the last frontend terminal ends its Psmux backend; minimizing does not. Reset will not blindly overwrite pending input or operate a changed terminal registration. If the exact configured message remains from a previous attempt, it attempts to submit that draft rather than typing it again.
+Network settings are optional. A proxy is not required. Reset follows existing local settings and connects directly when no proxy is configured. Enter a host and port only if a proxy is needed and automatic detection did not find it.
 
-## Connection, network and startup
+Use the top-right language selector to switch between Chinese and English.
 
-Use the **＋／−** beside **Connection & startup** to expand or collapse setup checks. Existing official Codex authentication is reused. If sign-in is missing, click **Sign in with ChatGPT** and complete official authorization yourself. Reset does not import all conversations from the ChatGPT website.
+## A few things to know
 
-**A proxy is optional.** Without one, Reset connects directly. It follows existing proxy environment variables or Windows system settings and can discover ports for supported running local proxy clients. Enter an HTTP proxy URL only when needed and automatic discovery fails. Public defaults contain no personal port, and URLs with embedded credentials are not accepted. Quota-query failures do not prevent the local conversation list from loading.
+Reset keeps the computer awake during continuous work. Closing the last frontend terminal ends its Psmux backend; minimizing does not. Reopening Reset does not automatically start work.
 
-**Open Reset at sign-in** starts only Reset after Windows login. It does not restore a chat or submit a task. Dependency installation, Windows elevation and scoped executable-permission repair use interface controls and user-confirmed system authorization. Repair does not relax profile-directory permissions or Codex sandbox settings.
+A complete real-account exhaustion, wait and recovery cycle, an actual update, and automatic shutdown still need further live validation. See [Validation scope](VALIDATION.md). Reset reports conditions it cannot confirm rather than repeatedly acting on them. System permissions and custom data directories can also limit external-session detection.
 
 ## Local data and privacy
 
