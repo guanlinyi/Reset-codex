@@ -14,8 +14,8 @@ from pathlib import Path
 from codex_rpc import Rpc, limits_view
 from desk_terminal import DATA, ROOT, TerminalDesk, TerminalError, identity_alive, process_identity, thread_id, write_json
 from desk_settings import SettingsError,SettingsStore,normalize,resolved
-from continuous_mode import Awake,ContinuousMode,ModeError
-from native_goal_control import NativeGoalControl
+from message_mode import Awake,ContinuousMode,ModeError
+from message_control import MessageControl
 
 from app_config import RESOURCES,load,binary,network_environment
 CHROME=binary('browser')
@@ -194,7 +194,7 @@ class Desk:
         self.terminal_inventory = {'items': [], 'checked_at': None}
         self.background_plan = None
         # Construction never starts tasks. Only the explicit Start endpoint arms this controller.
-        self.mode=ContinuousMode(NativeGoalControl(self),path=mode_path)
+        self.mode=ContinuousMode(MessageControl(self),path=mode_path)
         from setup_actions import SetupActions
         self.setup=SetupActions(self)
 
@@ -207,7 +207,7 @@ class Desk:
                       continuous=self.mode.snapshot(),source='Codex 官方账号额度',working_directory=load()['workspace'],preferences={k:load()[k] for k in ('language','thread_id','recovery_limit')},settings=self.settings.snapshot(),setup=self.setup.snapshot())
         return result
 
-    def start_continuous(self,tid=None,limit=0):
+    def start_continuous(self,tid=None,limit=0,shutdown=False,model='',effort='',command=None,auto_goal=True,auto_update=True):
         with self.metadata.lock:
             rows=self.metadata.threads
             if tid:tid=thread_id(tid)
@@ -217,7 +217,23 @@ class Desk:
                 tid=usable['id']
             if not tid:raise ModeError('尚无可用聊天，请稍后刷新。')
             thread=next((t for t in rows if t['id']==tid),None) or self.metadata.read_title(tid)
-            return self.mode.start(tid,thread['name'],limit)
+            options=normalize({'model':model,'effort':effort})
+            if model and not any(m['model']==model for m in self.metadata.models):raise SettingsError('请选择当前列表中的模型，或留空不修改。')
+            from message_control import CONTINUE_MESSAGE
+            self.mode.start(tid,thread['name'],limit,shutdown=shutdown,model=options['model'],effort=options['effort'],command=CONTINUE_MESSAGE if command is None else command,auto_goal=auto_goal,auto_update=auto_update)
+        quota=self.metadata.snapshot()['quota']
+        if not quota.get('available') or quota.get('stale'):
+            try:
+                quota=self.mode.driver.quota()
+                with self.metadata.lock:
+                    self.metadata.quota=quota;self.metadata.checked=time.time()
+            except Exception:pass
+        # Attempt the first submission before acknowledging the Start action.
+        # The worker uses the same tick lock, so it cannot submit a second copy.
+        self.mode.tick(quota)
+        state=self.mode.snapshot()
+        if state.get('phase')=='needs_attention':raise ModeError(state.get('last_error') or '终端尚未就绪，命令没有确认发送。')
+        return state
 
     def continuous_loop(self):
         awake=Awake()
@@ -278,7 +294,7 @@ class Desk:
         finally:
             self.refreshing.release()
 
-    def open_terminal(self, tid, allow_unidentified=False):
+    def open_terminal(self, tid, allow_unidentified=False,model='',effort='',cancel=None,auto_goal=True,auto_update=True):
         tid = thread_id(tid)
         if not self.action_lock.acquire(False):
             raise TerminalError('正在处理一次打开请求，请稍候；不会重复打开。')
@@ -286,8 +302,14 @@ class Desk:
             # Always fetch the exact selected UUID; never silently select --last or same-title thread.
             thread = self.metadata.read_title(tid)
             options=self.settings.snapshot()['effective']
-            args=(thread,options['proxy_url'],options['model'],options['effort'])
-            result=self.terminal.open(*args,allow_unidentified=True) if allow_unidentified is True else self.terminal.open(*args)
+            requested=normalize({'model':model,'effort':effort})
+            args=(thread,options['proxy_url'],requested['model'],requested['effort'])
+            kwargs={'allow_unidentified':True} if allow_unidentified is True else {}
+            if cancel is not None:kwargs['cancel']=cancel
+            if not auto_update:kwargs['auto_update']=False
+            result=self.terminal.open(*args,**kwargs)
+            if model and result.get('action') in ('focused_existing','reused','revealed_existing'):
+                MessageControl(self,auto_goal=auto_goal,auto_update=auto_update).switch_model(tid,model,effort,cancel)
             self.last_action = dict(result, title=thread['name'], at=time.time())
             write_json(DATA/'last_action.json', self.last_action)
             return result
@@ -321,13 +343,6 @@ class Desk:
         def close():
             return self.terminal.close(tid,expected,require_background=True) if background else self.terminal.close(tid,expected)
         return self._close_target(tid,validate,close)
-
-    def close_process(self,pid,expected,confirmed=False):
-        if confirmed is not True:raise TerminalError('请先确认结束所选 Codex 进程；原来的终端窗口会保留。')
-        target=self.terminal.process_target(pid,expected)
-        ids=target.get('thread_ids',[]);tid=ids[0] if len(ids)==1 else None
-        return self._close_target(tid,lambda:self.terminal.process_target(pid,expected),
-                                  lambda:self.terminal.close_process(pid,expected))
 
     def _close_target(self,tid,validate,close):
         # Validate before cancellation, then validate again after pending dispatch completes.
@@ -435,7 +450,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get('Content-Length', '0'))
-            if length > 4096 or length < 0:
+            if length > 16384 or length < 0:
                 raise ValueError('请求过大')
             data = json.loads(self.rfile.read(length) or b'{}')
             if self.path == '/api/refresh':
@@ -448,14 +463,15 @@ class Handler(BaseHTTPRequestHandler):
                         m.list_threads(m.cursor)
                 result = {'ok': True}
             elif self.path == '/api/terminal/open':
-                result = {'ok': True, **self.server.desk.open_terminal(data.get('thread_id'),data.get('allow_unidentified'))}
+                result = {'ok': True, **self.server.desk.open_terminal(data.get('thread_id'),data.get('allow_unidentified'),model=data.get('model') or '',effort=data.get('effort') or '')}
             elif self.path == '/api/terminal/check':
                 result={'ok':True,'terminal_inventory':self.server.desk.check_terminals()}
             elif self.path == '/api/terminal/close':
-                close=self.server.desk.close_process if data.get('target_type')=='process' else self.server.desk.close_terminal
-                result={'ok':True,**close(data.get('pid') if data.get('target_type')=='process' else data.get('thread_id'),data.get('close_token'),data.get('confirmed'))}
+                if data.get('target_type')=='process':
+                    raise TerminalError('Reset 只管理自己的 Psmux 终端。')
+                result={'ok':True,**self.server.desk.close_terminal(data.get('thread_id'),data.get('close_token'),data.get('confirmed'))}
             elif self.path == '/api/terminal/view':
-                result={'ok':True,**self.server.desk.terminal.view_process(data.get('pid'),data.get('close_token'))}
+                raise TerminalError('Reset 只管理自己的 Psmux 终端。')
             elif self.path == '/api/terminal/background/prepare':
                 result={'ok':True,**self.server.desk.prepare_background_close()}
             elif self.path == '/api/terminal/background/close':
@@ -466,7 +482,7 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == '/api/setup':
                 result={'ok':True,**self.server.desk.setup.perform(data)}
             elif self.path == '/api/continuous/start':
-                result={'ok':True,'continuous':self.server.desk.start_continuous(data.get('thread_id'),data.get('recovery_limit',0))}
+                result={'ok':True,'continuous':self.server.desk.start_continuous(data.get('thread_id'),data.get('recovery_limit',0),shutdown=data.get('shutdown',False),model=data.get('model') or '',effort=data.get('effort') or '',command=data.get('command'),auto_goal=data.get('auto_goal',True),auto_update=data.get('auto_update',True))}
             elif self.path == '/api/continuous/cancel':
                 result={'ok':True,'continuous':self.server.desk.mode.cancel()}
             else:

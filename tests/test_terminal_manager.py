@@ -31,19 +31,27 @@ class TerminalManagerTests(unittest.TestCase):
             two=self.terminal.viewer(self.record,{'name':'Example','cwd':str(self.root)})
         self.assertNotEqual(one,two)
         for call in launch.call_args_list:
-            args=call.args[0];self.assertIn('--new-window',args)
-            doc=json.loads(Path(args[-1]).read_text(encoding='utf-8'))
-            task=doc['tasks']['tasks'][0]
-            self.assertEqual(task['args'][-1],TID)
-            self.assertEqual(task['options']['env']['RESET_DATA_DIR'],str(self.root))
-            self.assertIn('RESET_VIEWER_ID',task['options']['env'])
-            self.assertNotIn('resume',task['args'])
+            args=call.args[0];self.assertIn('new-tab',args)
+            self.assertEqual(args[args.index('--colorScheme')+1],'Campbell')
+            self.assertIn('--suppressApplicationTitle',args)
+            self.assertEqual(args[-1],TID)
+            self.assertEqual(call.kwargs['env']['RESET_DATA_DIR'],str(self.root))
+            self.assertIn('RESET_VIEWER_ID',call.kwargs['env'])
+            self.assertNotIn('resume',args)
 
     def test_running_open_only_reconnects_without_sending_commands(self):
         thread={'id':TID,'name':'Example','cwd':str(self.root)}
-        with patch('desk_terminal.binary',return_value=Path(__file__)),patch.object(self.terminal,'inspect',return_value=self.state),patch.object(self.terminal,'viewer',return_value='a'*32),patch.object(self.terminal,'viewer_connected',return_value=True),patch.object(self.terminal,'call') as call,patch.object(self.terminal,'_new') as new:
+        with patch('desk_terminal.binary',return_value=Path(__file__)),patch.object(self.terminal,'inspect',return_value=self.state),patch.object(self.terminal,'viewer',return_value='a'*32),patch.object(self.terminal,'viewer_connected',return_value=True),patch.object(self.terminal,'call',return_value='') as call,patch.object(self.terminal,'_new') as new,patch.object(self.terminal,'finish_startup') as finish:
             result=self.terminal.open(thread,'')
-        self.assertEqual(result['action'],'reused');new.assert_not_called();call.assert_not_called()
+        self.assertEqual(result['action'],'reused');new.assert_not_called();finish.assert_called_once()
+        self.assertEqual(call.call_args.args[1],'list-clients')
+
+    def test_attached_session_never_creates_another_viewer_or_codex(self):
+        thread={'id':TID,'name':'Example','cwd':str(self.root)}
+        with patch('desk_terminal.binary',return_value=Path(__file__)),patch.object(self.terminal,'inspect',return_value=self.state),patch.object(self.terminal,'call',return_value='existing client'),patch.object(self.terminal,'viewer') as viewer,patch.object(self.terminal,'_new') as new:
+            with self.assertRaisesRegex(TerminalError,'无法准确定位'):
+                self.terminal.open(thread,'')
+        viewer.assert_not_called();new.assert_not_called()
 
     def test_stale_client_does_not_confirm_new_viewer(self):
         write_json(self.root/'viewers'/TID/('a'*32+'.json'),{'viewer_id':'a'*32,'client':{'pid':1,'created':1}})
@@ -62,15 +70,14 @@ class TerminalManagerTests(unittest.TestCase):
     def test_dead_registry_is_not_reported_as_a_running_terminal(self):
         with patch('desk_terminal.identity_alive',return_value=False):
             rows=self.terminal.inventory([], [{'pid':444,'thread_ids':[],'unidentified':True}])
-        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['pid'],444)
+        self.assertEqual(rows,[])
 
     def test_external_and_unknown_processes_are_read_only(self):
         other=str(uuid.UUID(int=16))
         processes=[{'pid':333,'thread_ids':[other]},{'pid':444,'thread_ids':[],'unidentified':True}]
         with patch.object(self.terminal,'inspect',return_value={'state':'external'}):
             rows=self.terminal.inventory([],processes)
-        for row in rows:self.assertFalse(row['can_close']);self.assertFalse(row['can_open'])
-        self.assertTrue(any(row.get('pid')==444 for row in rows))
+        self.assertEqual(rows,[])
 
     def test_stale_close_token_cannot_kill_replacement_process(self):
         expected=self.terminal.close_token(self.record,self.state)
@@ -86,6 +93,19 @@ class TerminalManagerTests(unittest.TestCase):
         self.assertEqual(call.call_args.args[1:],('kill-session','-t','reset_test_15'))
         self.assertEqual(call.call_args.args[0]['session'],self.record['session'])
         self.assertIn('closed_at',json.loads(self.terminal.path(TID).read_text(encoding='utf-8')))
+
+    def test_outside_same_session_does_not_prevent_ending_our_empty_shell(self):
+        outside={'pid':999,'created':120,'thread_ids':[TID]}
+        with patch('desk_terminal.identity_alive',return_value=True),patch.object(self.terminal,'pane',return_value={'shell':self.record['shell']}),patch('desk_terminal.psutil.Process') as process:
+            process.return_value.children.return_value=[]
+            state=self.terminal.inspect(TID,[outside])
+        self.assertEqual(state['state'],'conflict');self.assertTrue(state['can_close'])
+        self.assertEqual(state['pid'],111);self.assertEqual(state['outside_pids'],[999])
+        with patch.object(self.terminal,'inspect',return_value=state),patch('desk_terminal.identity_alive',return_value=False),patch.object(self.terminal,'call') as call:
+            self.terminal.close(TID,state['close_token'])
+        self.assertEqual(call.call_count,1)
+        self.assertEqual(call.call_args.args[1:],('kill-session','-t','reset_test_15'))
+        self.assertEqual(call.call_args.args[0]['shell']['pid'],111)
 
     def make_desk(self):
         desk=Desk.__new__(Desk);desk.terminal=Mock();desk.terminal.lock=threading.RLock()

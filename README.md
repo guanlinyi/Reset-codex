@@ -1,85 +1,70 @@
-﻿# Reset-codex
+# Reset-codex
 
 English | [简体中文](README.zh-CN.md)
 
-A Windows quota dashboard and continuation tool for Codex. Monitor five-hour and weekly usage limits, reconnect to existing native conversations in VS Code, and continue work after a chosen number of quota recoveries. The app is displayed as **Reset** and supports Chinese and English.
+A Windows 11 quota dashboard and continuation tool for Codex. Monitor five-hour and weekly limits, manage native Codex terminals through Psmux, and continue work after quota recovery. The app is named **Reset**, defaults to Chinese, and supports English. VS Code is not required.
 
 ## Get started
 
 [Download the Windows x64 portable package](release/Reset-codex-windows-x64.zip)
 
-1. Extract the portable package and double-click `Reset.exe`. Keep `_internal` and the helper executable alongside it. Python and Psmux are included.
-2. Wait for the automatic checks. Reset reuses an existing Codex sign-in and lists recent local conversations. There is no need to import session files or enter conversation IDs.
-3. Keep the default conversation or select another one, choose how many quota recoveries to wait for, and click **Start continuous work**. Click **Cancel continuous work** to stop automatic continuation.
+1. Extract the package and double-click `Reset.exe`. Keep the helper executable and `_internal` alongside it. Python and Psmux are included.
+2. Wait for automatic checks. Reset reuses an existing Codex sign-in and lists recent local CLI conversations by title and full session ID. Use **Connection & startup** to install or locate Codex and Windows Terminal when missing.
+3. Keep the default conversation or select another one, then click **View**. The native chat opens in a black Windows Terminal window.
+4. Edit the **Continuation message** if needed, choose how many quota recoveries to wait for, and click **Start continuous work**. Reset inputs and submits the message automatically. Subsequent recovery rounds use the same message.
 
-The default is **0 recoveries**: stop when the current quota runs out. Select **1 recovery** to wait for one confirmed recovery and continue. Completion, a manual pause, or a condition requiring attention can stop work earlier. Reset keeps the system awake while continuous mode is active.
+The prefilled message is:
 
-The interface initially uses Chinese. Select **English** in the top-right language menu to switch; the choice is remembered locally.
+> 持续推进至额度耗尽，确认独立任务结束后保存交接
 
-### If something is missing on first launch
+It asks Codex to continue until quota exhaustion and save a handoff after completing independent tasks. Replace it with your own instruction, up to 2000 characters. The optional model selector changes the model only when explicitly selected; otherwise the conversation keeps its own model.
 
-Manual configuration is normally unnecessary. **Connection & startup** expands when an action is needed:
+## Continuous work
 
-| Situation | Action |
-|---|---|
-| Codex or VS Code was not found | Click **Install**, or **Choose program** to locate an existing installation. |
-| No existing sign-in is available | Click **Sign in with ChatGPT** and complete the official browser authorization once. Existing Codex sign-ins are reused automatically. |
-| An application file has a restricted integrity label | Click **Repair app permissions** and confirm the Windows prompt. |
-| The apps should open at Windows sign-in | Enable **Open Reset and VS Code at sign-in**. |
-| A connection is temporarily unavailable | Click **Check again**. Use the optional network settings only if needed. |
+- **Recoveries default to 0:** stop automation when the current quota runs out. Choose 1 to wait for one confirmed five-hour quota recovery and continue for one more round. Each recovery submits the message once. A countdown alone does not prove recovery.
+- **Dismiss the goal-resume prompt by default:** select `Leave paused`, then submit the continuation message. Uncheck this option to handle the prompt manually.
+- **Update Codex automatically by default:** handle a recognized official update picker, confirm success and the old Codex process exiting, then resume the original session ID in the same Psmux terminal before submitting the message. Uncheck to handle updates manually. Unsupported menus, failures and timeouts stop automation rather than retrying indefinitely.
+- **Shutdown defaults to off:** when enabled, the final quota exhaustion and an idle terminal start a cancellable 60-second countdown. Quota is checked again before shutdown. With 0 recoveries, shutdown follows the current round; with 1, it follows the final round after one recovery.
+- **Cancel continuous work:** stop future continuation and shutdown. Already submitted Codex work keeps running. Use the conversation's **End** control to stop its terminal and work.
 
-Install actions use Windows Package Manager and ask for confirmation first. If the package manager is unavailable, Reset opens an official installation page. Windows elevation and account authorization remain under the user's control.
+Reset keeps the computer awake while continuous mode is active. Closing a terminal, shutting down Windows, permission prompts or other conditions requiring attention can interrupt the workflow. Restarting Reset does not automatically restart continuous work. A complete real-account exhaustion → waiting → recovery cycle still requires further live validation; see [Validation scope](VALIDATION.md).
 
-Startup opens Reset and VS Code only. It does not restore a conversation or start work; the Start button is still required.
+## Terminal management
 
-## Automatic network discovery
+**View** reconnects an existing Reset-managed Psmux conversation or creates a terminal when it is not running. Launches for the same session ID are serialized. An attached session uses its existing window rather than starting another Codex.
 
-**A proxy is optional.** Without one, Reset connects directly. It follows configured proxy environment variables or a Windows system proxy. For supported running local proxy clients, it can also discover listening ports and verify a TLS connection to the official authentication service. No personal port is hardcoded, and proxy configuration files are not read.
+**Running conversations** lists managed Psmux terminals with titles, full session IDs, PIDs and connection status. **End** asks for confirmation, stops that conversation's continuation controller and closes its terminal while preserving saved history. Batch end includes only confirmed detached sessions and rechecks their identities before closing; reconnected or changed targets are skipped.
 
-Supported clients include Clash/Mihomo, v2ray/Xray, sing-box, Geph, and others. If automatic discovery fails and the network actually requires a proxy, paste an HTTP proxy URL into **Connection & startup**. URLs containing usernames or passwords are not supported. Separate proxy host and port fields, along with model options, remain available in the advanced settings.
+External conversations are identified using launch arguments, registered identities and persistently held writable session-file handles. This inspects filenames and handle permissions, not file contents. If the selected conversation is identified in an external terminal, Reset asks you to close the original Codex first. Unidentified unrelated processes do not block every conversation. Permissions, custom data directories and unsupported clients can limit detection.
 
-Local conversation metadata and remote quota are fetched independently. A quota or network failure does not prevent the local conversation list from loading.
+Closing the last frontend terminal ends its Psmux backend; minimizing does not. Reset will not blindly overwrite pending input or operate a changed terminal registration. If the exact configured message remains from a previous attempt, it attempts to submit that draft rather than typing it again.
 
-## Conversations and sign-in
+## Connection, network and startup
 
-Reset uses the locally installed official Codex app-server to reuse Codex authentication and request quota, models, and recent CLI conversation titles. It does not import the full chat history from the ChatGPT website or directly open authentication files. Conversation execution stays in the selected native Codex terminal.
+Use the **＋／−** beside **Connection & startup** to expand or collapse setup checks. Existing official Codex authentication is reused. If sign-in is missing, click **Sign in with ChatGPT** and complete official authorization yourself. Reset does not import all conversations from the ChatGPT website.
 
-Each conversation row has **View** and **End** controls. View reconnects an existing Reset terminal, returns to a uniquely identified external terminal window, or opens a new terminal when the conversation is not running. End is disabled when there is no running target to stop.
+**A proxy is optional.** Without one, Reset connects directly. It follows existing proxy environment variables or Windows system settings and can discover ports for supported running local proxy clients. Enter an HTTP proxy URL only when needed and automatic discovery fails. Public defaults contain no personal port, and URLs with embedded credentials are not accepted. Quota-query failures do not prevent the local conversation list from loading.
 
-Use **Check running conversations** to list Reset-managed terminals and detected external chat processes. Each PID is shown with its conversation title when an exact identity is available. Codex app-server, MCP, execution-service, and application-internal processes are filtered separately from chat terminals. Ordinary VS Code terminals and Psmux-hosted sessions are distinguished; an unrelated unidentified process does not disable all conversation rows. A retained shell can appear after Codex has exited.
+**Open Reset at sign-in** starts only Reset after Windows login. It does not restore a chat or submit a task. Dependency installation, Windows elevation and scoped executable-permission repair use interface controls and user-confirmed system authorization. Repair does not relax profile-directory permissions or Codex sandbox settings.
 
-Explicit resume IDs and the current native ancestor's exported identity can associate a process with its title. If a process has no confirmed conversation identity, the list states that clearly. Reset does not guess from the most recent title. If a new terminal could duplicate an unidentified existing conversation, View asks for confirmation instead of disabling the button or silently starting a duplicate.
+## Local data and privacy
 
-**Reconnect** opens a fresh VS Code viewer attached to the original Psmux session. It can reconnect even when the previous workspace remains open but its terminal was closed; it does not start another Codex for an already-running conversation. Repeated reconnect requests can open additional VS Code viewer windows. Workspace-trust or automatic-task prompts must be reviewed by the user.
+Personal configuration is stored in `%LOCALAPPDATA%/Reset/config.local.json`, with runtime and interface data in the local application-data directory. Continuation messages and checkbox settings are stored in local continuous-mode state, not public defaults or portable-package resources. A `config.local.json` alongside the app is also supported; application-data overrides take precedence.
 
-**End terminal** asks for confirmation, stops continuous work for that conversation, and ends only its verified Reset-managed Psmux session. Running work and unsent terminal input are interrupted; saved conversation history and project files remain. Other VS Code windows are not closed. Refresh the running list if the process changed before confirmation.
+Quota, models and recent conversation titles come from the local official Codex app-server without directly opening authentication files. Prompt handling and submission verification capture the selected Psmux terminal's visible screen locally, which may contain conversation text. Reset does not upload those captures or save them as logs. Instructions submitted to Codex are processed by official Codex through its normal operation.
 
-For an external conversation, **End** stops the selected Codex PID after checking its creation time and identity; its original terminal or VS Code window remains. View does not start a second Codex when a matching process exists. If its original window cannot be uniquely located, Reset explains how to end that process and reopen the conversation through Reset. Continuous work requires a Reset-managed terminal.
-
-**End all background chats** first shows titles and PIDs for confirmation. It includes only Reset-managed sessions confirmed to have no connected frontend. Connected, unidentified, external, and internal-service processes are not included. The connection and identity are checked again before each close; reconnected or changed targets are skipped. Plans expire after 90 seconds and cannot be replayed.
-
-Closing the last attached conversation terminal, or the VS Code window that owns it, automatically ends that session and stops its continuous-work controller. Minimizing the window does not end it. This disconnect policy is armed only after a real attachment and is enforced by Psmux even if Reset is no longer running. Legacy sessions left by an earlier version can still be found, reconnected, or ended through the running-conversation list; reconnecting applies the new policy.
-
-If terminal ownership is uncertain, input is pending, authorization is required, or another condition needs attention, Reset stops rather than guessing where to type or approving requests automatically. Restarting the app does not automatically resume continuous work.
-
-## Local configuration and privacy
-
-The public `config.json` contains generic defaults. Program paths, model overrides, workspace, proxy settings, and the default conversation can all remain blank. Settings saved through the interface go to `%LOCALAPPDATA%/Reset/config.local.json`; runtime state is stored in the same local application-data directory, outside the source tree and portable package.
-
-A `config.local.json` next to the app is also supported for portable or advanced use. Overrides in the user's local application-data directory take precedence. Do not commit personal configuration, authentication files, browser data, or runtime records. The repository includes `.gitignore` rules and a public-content audit for common local files.
+Do not commit personal configuration, authentication files, browser data, runtime records or personal progress notes. Ignore rules and a public-content audit are included.
 
 | Advanced setting | Purpose |
 |---|---|
-| `codex_path`, `vscode_path`, `browser_path`, `psmux_path` | Specify executable paths if automatic discovery fails. |
-| `workspace` | Leave blank to list all local CLI conversations, or filter by working directory. |
-| `model`, `effort` | Leave blank to follow Codex or the existing conversation settings. |
-| `thread_id` | Optional default conversation; blank selects the most recent usable conversation. |
-| `language` | `zh` or `en`; a manual interface selection is remembered locally. |
-| `recovery_limit` | Default number of quota recoveries to wait for, from 0 to 100. |
-| `proxy_host`, `proxy_port` | Optional; fill both or leave both blank for discovery or direct access. |
-| `require_admin` | Check administrator permissions and the actual Windows integrity level. |
-| `startup_delay_seconds` | Delay after Windows sign-in; defaults to 10 seconds. |
-| `startup_open_vscode` | Whether startup also opens an empty VS Code workspace. |
+| `codex_path`, `windows_terminal_path`, `browser_path`, `psmux_path` | Locate executables if automatic discovery fails. |
+| `workspace` | Leave blank for all local CLI conversations or filter by working directory. |
+| `thread_id` | Optional default conversation; blank selects the most recent usable one. |
+| `language` | `zh` or `en`; interface selection is remembered locally. |
+| `recovery_limit` | Default recovery count, from 0 to 100. |
+| `proxy_host`, `proxy_port` | Optional; fill both or leave blank for discovery or direct access. |
+| `require_admin` | Check administrator permissions and actual Windows integrity level. |
+| `startup_delay_seconds` | Delay after Windows sign-in, default 10 seconds. |
 
 ## Development and fallback commands
 

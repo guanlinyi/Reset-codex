@@ -1,4 +1,4 @@
-"""Process roles, exact external targets and confirmed-background batch boundaries."""
+"""Managed Psmux inventory, duplicate guard and background batch boundaries."""
 from pathlib import Path
 import threading
 import time
@@ -33,42 +33,29 @@ class TargetTests(unittest.TestCase):
         state=self.terminal.inspect(str(uuid.UUID(int=72)),[{'pid':999,'unidentified':True,'thread_ids':[]}])
         self.assertEqual(state['state'],'closed')
 
-    def test_external_target_has_exact_identity_and_end_token(self):
+    def test_external_target_is_read_only(self):
         state=self.terminal.inspect(TID)
-        self.assertEqual(state['state'],'external');self.assertTrue(state['can_close'])
-        self.assertEqual(state['identity'],{'pid':1234,'created':17})
-        self.assertEqual(state['close_token'],self.terminal.process_token(self.process))
+        self.assertEqual(state['state'],'external');self.assertFalse(state['can_close'])
+        self.assertNotIn('close_token',state)
 
-    def test_unknown_identity_keeps_view_available_but_does_not_silently_duplicate(self):
+    def test_external_and_unidentified_processes_are_not_listed(self):
+        processes=[dict(self.process),{'pid':999,'unidentified':True,'thread_ids':[]}]
+        self.assertEqual(self.terminal.inventory([{'id':TID,'name':'Example'}],processes),[])
+
+    def test_unrelated_unknown_identity_does_not_block_psmux_creation(self):
         other=str(uuid.UUID(int=72));self.terminal.scan=lambda:[{'pid':999,'unidentified':True,'thread_ids':[]}]
-        with patch('desk_terminal.binary',return_value=Path(__file__)),patch.object(self.terminal,'_new') as new:
-            result=self.terminal.open({'id':other,'name':'Example','cwd':str(self.root)},'')
-        self.assertEqual(result['action'],'confirm_new');self.assertEqual(result['unidentified_pids'],[999]);new.assert_not_called()
+        with patch('desk_terminal.binary',return_value=Path(__file__)),patch.object(self.terminal,'_new',side_effect=RuntimeError('creation reached')) as new:
+            for override in (False,True):
+                with self.assertRaisesRegex(RuntimeError,'creation reached'):
+                    self.terminal.open({'id':other,'name':'Example','cwd':str(self.root)},'',allow_unidentified=override)
+        self.assertEqual(new.call_count,2)
+        self.assertTrue(all(c.args[0]['id']==other for c in new.call_args_list))
 
-    def test_view_running_external_chat_focuses_host_without_starting_codex(self):
+    def test_external_chat_is_not_focused_or_duplicated(self):
         with patch('desk_terminal.binary',return_value=Path(__file__)),patch('desk_terminal.identity_alive',return_value=True),patch('terminal_hosts.focus') as focus,patch.object(self.terminal,'_new') as new:
-            result=self.terminal.open({'id':TID,'name':'Example','cwd':str(self.root)},'')
-        self.assertEqual(result['action'],'focused');focus.assert_called_once();new.assert_not_called()
-
-    def test_stale_process_token_cannot_focus_or_end_reused_pid(self):
-        expected=self.terminal.process_token(self.process);self.process['created']=18
-        with patch('desk_terminal.identity_alive',return_value=True),patch('terminal_hosts.focus') as focus,patch('desk_terminal.psutil.Process') as process:
-            with self.assertRaises(TerminalError):self.terminal.view_process(1234,expected)
-            with self.assertRaises(TerminalError):self.terminal.close_process(1234,expected)
-        focus.assert_not_called();process.assert_not_called()
-
-    def test_external_end_only_terminates_selected_codex_process(self):
-        expected=self.terminal.process_token(self.process)
-        with patch('desk_terminal.identity_alive',return_value=True),patch('desk_terminal.psutil.Process') as process:
-            result=self.terminal.close_process(1234,expected)
-        process.assert_called_once_with(1234);process.return_value.terminate.assert_called_once()
-        self.assertEqual(result['pid'],1234)
-
-    def test_internal_service_is_rejected_even_if_passed_to_target_scan(self):
-        self.process['host_kind']='service';expected=self.terminal.process_token(self.process)
-        with patch('desk_terminal.identity_alive',return_value=True),patch('desk_terminal.psutil.Process') as process:
-            with self.assertRaises(TerminalError):self.terminal.close_process(1234,expected)
-        process.assert_not_called()
+            with self.assertRaisesRegex(TerminalError,'Reset 以外'):
+                self.terminal.open({'id':TID,'name':'Example','cwd':str(self.root)},'')
+        focus.assert_not_called();new.assert_not_called()
 
     def test_background_end_rechecks_frontend_before_terminating(self):
         directory=self.root/'sessions'/TID;directory.mkdir(parents=True)

@@ -38,7 +38,7 @@ class SafetyTests(unittest.TestCase):
     def test_startup_only_opens_apps(self):
         with patch.object(startup,'open_editor') as editor,patch('quota_desk.main') as desktop,patch('quota_desk.Desk.open_terminal') as native:
             startup.launch()
-            editor.assert_called_once();desktop.assert_called_once_with(['--open']);native.assert_not_called()
+            editor.assert_not_called();desktop.assert_called_once_with(['--open']);native.assert_not_called()
     def test_ui_workspace_has_no_autorun_task(self):
         directory=app_config.DATA/'tests'/uuid.uuid4().hex
         with patch.object(startup,'DATA',directory),patch.object(startup,'binary',return_value=Path('code.exe')),patch.object(startup.subprocess,'Popen'):

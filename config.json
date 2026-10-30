@@ -13,5 +13,6 @@
   "recovery_limit": 0,
   "require_admin": true,
   "startup_delay_seconds": 10,
-  "startup_open_vscode": true
+  "startup_open_vscode": false,
+  "windows_terminal_path": ""
 }

@@ -27,7 +27,7 @@ def main():
             'config_has_no_proxy_default':not load()['proxy_host'] and not load()['proxy_port'],
             'no_task_started':True}
         if args.diagnose:
-            details['dependencies']={kind:{'found':binary(kind).is_file(),'low_integrity':file_integrity(binary(kind))<0x2000 if binary(kind).is_file() else None} for kind in ('codex','vscode','browser','psmux')}
+            details['dependencies']={kind:{'found':binary(kind).is_file(),'low_integrity':file_integrity(binary(kind))<0x2000 if binary(kind).is_file() else None} for kind in ('codex','windows_terminal','browser','psmux')}
         if args.report:
             args.report.parent.mkdir(parents=True,exist_ok=True)
             args.report.write_text(json.dumps(details,indent=2),encoding='utf-8')

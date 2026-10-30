@@ -11,7 +11,7 @@ from app_config import ROOT,DATA,RESOURCES,binary,load,save_local
 from desk_settings import SettingsError
 from terminal_permissions import process_integrity,file_integrity
 
-PACKAGES={'codex':'OpenAI.Codex','vscode':'Microsoft.VisualStudioCode'}
+PACKAGES={'codex':'OpenAI.Codex','windows_terminal':'Microsoft.WindowsTerminal'}
 
 def choose_program(kind):
     # A normal file picker owned by the user's explicit Choose button.
@@ -40,7 +40,7 @@ class SetupActions:
         if time.monotonic()-self.startup_checked>20:
             self.startup_enabled=startup.enabled()
             self.startup_checked=time.monotonic()
-        deps={kind:binary(kind).is_file() for kind in ('codex','vscode','browser','psmux')}
+        deps={kind:binary(kind).is_file() for kind in ('codex','windows_terminal','browser','psmux')}
         psmux=binary('psmux')
         try:permissions_ok=process_integrity(os.getpid())>=(0x3000 if load()['require_admin'] else 0x2000) and (not psmux.is_file() or file_integrity(psmux)>=0x2000)
         except OSError:permissions_ok=False
@@ -73,7 +73,7 @@ class SetupActions:
             if kind not in PACKAGES or data.get('confirmed') is not True:raise SettingsError('Installation requires confirmation')
             winget=shutil.which('winget.exe')
             if not winget:
-                os.startfile('https://learn.chatgpt.com/docs/quickstart' if kind=='codex' else 'https://code.visualstudio.com/Download')
+                os.startfile('https://learn.chatgpt.com/docs/quickstart' if kind=='codex' else 'https://aka.ms/terminal')
                 return {'status':'download_opened'}
             with self.lock:
                 if self.installing:return {'status':'installing'}

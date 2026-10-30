@@ -10,7 +10,7 @@ FROZEN=bool(getattr(sys,'frozen',False))
 ROOT=Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
 RESOURCES=Path(getattr(sys,'_MEIPASS',ROOT))
 DATA=Path(os.environ.get('RESET_DATA_DIR') or (Path(os.environ.get('LOCALAPPDATA',Path.home()))/'Reset'))
-DEFAULTS={'codex_path':'','vscode_path':'','browser_path':'','psmux_path':'','workspace':'',
+DEFAULTS={'windows_terminal_path':'','codex_path':'','vscode_path':'','browser_path':'','psmux_path':'','workspace':'',
           'proxy_host':'','proxy_port':'','model':'','effort':'','thread_id':'','language':'zh',
           'recovery_limit':0,'require_admin':True,'startup_delay_seconds':10,'startup_open_vscode':True}
 
@@ -25,7 +25,7 @@ def load():
     if type(values['require_admin']) is not bool:raise ValueError('require_admin must be true or false')
     if type(values['recovery_limit']) is not int or not 0<=values['recovery_limit']<=100:raise ValueError('Invalid recovery_limit')
     if type(values['startup_delay_seconds']) is not int or not 0<=values['startup_delay_seconds']<=300:raise ValueError('Invalid startup delay')
-    for key in ('codex_path','vscode_path','browser_path','psmux_path','workspace','proxy_host','proxy_port','model','effort','thread_id'):
+    for key in ('windows_terminal_path','codex_path','vscode_path','browser_path','psmux_path','workspace','proxy_host','proxy_port','model','effort','thread_id'):
         if not isinstance(values[key],str):raise ValueError(key+' must be a string')
     return values
 
@@ -77,6 +77,10 @@ def binary(kind,required=False):
             local=Path(os.environ.get('LOCALAPPDATA',''))
             candidates.extend([local/'Programs'/'OpenAI'/'Codex'/'bin'/'codex.exe',local/'Microsoft'/'WinGet'/'Links'/'codex.exe'])
             candidates.extend((local/'Microsoft'/'WinGet'/'Packages').glob('OpenAI.Codex*/codex.exe'))
+        elif kind=='windows_terminal':
+            found=shutil.which('wt.exe')
+            if found:candidates.append(Path(found))
+            candidates.append(Path(os.environ.get('LOCALAPPDATA',''))/'Microsoft/WindowsApps/wt.exe')
         elif kind=='vscode':
             found=shutil.which('code.cmd')
             if found:candidates.append(Path(found).parent.parent/'Code.exe')

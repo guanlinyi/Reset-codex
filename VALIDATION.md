@@ -1,18 +1,27 @@
 # Validation scope
 
-- 77 automated tests cover bounded quota recovery, cancellation, manual pause, restart safety, direct networking without a proxy, dynamic local-proxy discovery, independent local conversation loading, configuration defaults, local-service origin checks, startup without conversation restoration, detached-session inventory, fresh viewer requests, stale close-target rejection, cancellation before terminal closure, verified disconnect-policy arming, stopping recovery after backend termination, service/console/Psmux host classification, exact external-process targets, unknown-identity confirmation, PID/title association, and confirmed-background batch boundaries.
-- Public source and resource audit passes. The public defaults do not specify personal paths, a proxy port, a conversation, a model, or a workspace. Runtime state and local override files are excluded and are not included in this checkout.
-- Both frozen EXEs pass resource/runtime smoke checks without starting Codex, reading chat content, or consuming model quota.
-- The frozen Python code objects in both EXEs were inspected as well as the source/resource text. No original private configuration markers were found.
-- Synthetic desktop Chinese and mobile English interfaces were rendered and visually inspected. Proxy fields remain empty. Configuration-selected language and a custom recovery count are tested.
-- Integrity metadata is checked separately from the administrator flag. A Low label is detected; an explicit scoped repair script is provided. Repair does not change profile-directory permissions or Codex sandbox policy.
-- Both frozen entry points and an isolated bundled Psmux → PowerShell → bundled terminal-helper chain were checked for High integrity. Repair is explicitly scoped to application executables.
-- A real frozen-app integration check removed inherited proxy environment variables and used empty application configuration. The app discovered an available supported local proxy, reused an existing Codex ChatGPT sign-in, and loaded quota, recent conversation metadata, and the model catalog without starting a task.
-- Onboarding sign-in and startup-toggle behavior were tested with mocked browser authorization and task registration. These checks did not install software, reset an account, or register a real startup task.
-- Two isolated real Psmux sessions and an isolated VS Code profile were used to verify background-session enumeration, client disconnection without backend termination, reconnecting to the same shell and preserved output, and ending one session while the other survived. No Codex process or model task was started by this test.
-- Additional default-policy sessions verified that closing the last terminal client and terminating the isolated VS Code instance automatically ended their respective backend shells while an unrelated isolated session survived. No Reset service was running during this test. The retained-background test above uses an explicitly marked legacy fixture; new sessions close on disconnect.
-- A real Psmux batch plan included three background test sessions. One was connected to an isolated VS Code frontend after plan preparation. Execution closed the other two sessions and skipped the newly connected session.
-- Browser actions with synthetic data verify View/End on every history and running row, View enabled for a nonrunning conversation, external-window focus without a new Codex launch, title/PID display, external-end confirmation, and background-only batch confirmation/cancellation. Native process focus/end in these browser tests is mocked; actual user processes are not terminated.
-- Running-conversation controls were exercised in the browser with synthetic metadata and mocked native actions: reconnect, dismissing the close confirmation, confirming the exact close target, read-only external processes, Chinese/English switching, and a 390-pixel viewport. Final rendered screenshots were inspected.
+The current Windows build has passed initial user acceptance for the interface and basic continuation workflow. This is not a claim that every recovery, update or shutdown scenario has been verified live.
 
-This is not evidence of a complete real-account exhaustion → waiting → recovery cycle. That scenario and changing native Codex UI versions still require live acceptance. Terminal-manager tests did not change startup registration, restore a real user conversation, or submit a model request.
+## Verified in live operation
+
+- A selected existing Codex conversation opens in a black Windows Terminal through Psmux. The backend Codex process and attached Psmux client were checked.
+- The prescribed Leave paused → continuation-message sequence was demonstrated and confirmed by the user during development. A later overlay-layout regression was identified from an authorized terminal inspection and covered by a synthetic regression test.
+- A manually opened external Codex conversation was associated with its process using writable session-file handle metadata. The open guard returned an external-terminal warning and did not create another terminal.
+- Startup behavior and scoped permission repair have been exercised on Windows. Startup opens Reset without automatically submitting work.
+
+## Automated and synthetic checks
+
+- All 104 public automated checks pass. They cover configuration/privacy defaults, quota state transitions, cancellation, terminal ownership, exact close targets, duplicate guards, detach policy, file-handle identity inference, message submission and update handling.
+- Message tests cover overlay goal prompts, unchecked automatic handling, editable multiline instructions, Enter submission, a retained exact draft, retrying Enter without typing a duplicate message, and failure when submission remains unconfirmed.
+- Update tests cover a supported official picker, success followed by the same session ID, disabled automatic updates, failures, timeouts and repeated-prompt prevention. Update commands and power actions are mocked in tests.
+- Synthetic browser checks verify default checked options, editable instructions, request parameters, Chinese/English switching and a narrow-window layout. Rendered interface screenshots were visually inspected.
+- Public-content and portable-package checks exclude local configuration, authentication files, conversation state, experimental artifacts and personal progress documents.
+
+## Still requires live validation
+
+- A complete real-account quota exhaustion → waiting → confirmed recovery → automatic continuation cycle.
+- The next actual Codex update, including its exact UI/version and installer behavior. Current update-transition checks use fixtures; an available real update was not forced.
+- Automatic shutdown after the final quota round. Automated tests use a fake power action, never a real shutdown.
+- Changed Codex UI versions, custom installation/data paths and permission environments beyond the tested machine.
+
+The app stops with a visible error when terminal state or submission cannot be confirmed. Session detection is best-effort when OS access is restricted or a client does not expose a supported identity signal.
