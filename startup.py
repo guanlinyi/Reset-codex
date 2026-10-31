@@ -13,12 +13,20 @@ def enabled():
     except (OSError,subprocess.TimeoutExpired):return None
     if result.returncode:return False
     try:
-        tree=ET.fromstring(result.stdout);ns={'t':'http://schemas.microsoft.com/windows/2004/02/mit/task'}
+        try:
+            tree=ET.fromstring(result.stdout)
+        except ET.ParseError:
+            # schtasks can declare UTF-16 while writing UTF-8/OEM bytes to a pipe.
+            # Parsing decoded text avoids trusting that incorrect declaration.
+            try:text=result.stdout.decode('utf-8-sig')
+            except UnicodeError:text=result.stdout.decode('oem')
+            tree=ET.fromstring(text)
+        ns={'t':'http://schemas.microsoft.com/windows/2004/02/mit/task'}
         args=command('--autostart')
         return (tree.findtext('.//t:Exec/t:Command',namespaces=ns)==args[0] and
                 tree.findtext('.//t:Exec/t:Arguments',default='',namespaces=ns)==subprocess.list2cmdline(args[1:]) and
                 tree.findtext('.//t:Settings/t:Enabled',default='true',namespaces=ns)!='false')
-    except (ValueError,UnicodeError):return False
+    except (ValueError,UnicodeError,ET.ParseError):return None
 
 
 def register(enabled=True):

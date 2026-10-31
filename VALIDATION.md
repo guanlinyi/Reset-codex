@@ -11,7 +11,7 @@ The current Windows build has passed initial user acceptance for the interface a
 
 ## Automated and synthetic checks
 
-- All 83 current automated checks pass. They cover configuration/privacy defaults, quota state transitions, cancellation, terminal ownership, exact close targets, duplicate guards, detach policy, file-handle identity inference, message submission and update handling.
+- All 88 current automated checks pass. They cover configuration/privacy defaults, quota state transitions, cancellation, terminal ownership, exact close targets, duplicate guards, detach policy, file-handle identity inference, message submission and update handling.
 - Message tests cover overlay goal prompts, unchecked automatic handling, editable multiline instructions, Enter submission, a retained exact draft, retrying Enter without typing a duplicate message, and failure when submission remains unconfirmed.
 - Update tests cover a supported official picker, success followed by the same session ID, disabled automatic updates, failures, timeouts and repeated-prompt prevention. Update commands and power actions are mocked in tests.
 - Synthetic browser checks verify default checked options, editable instructions, request parameters, Chinese/English switching and a narrow-window layout. Rendered interface screenshots were visually inspected.
@@ -25,3 +25,9 @@ The current Windows build has passed initial user acceptance for the interface a
 - Changed Codex UI versions, custom installation/data paths and permission environments beyond the tested machine.
 
 The app stops with a visible error when terminal state or submission cannot be confirmed. Session detection is best-effort when OS access is restricted or a client does not expose a supported identity signal.
+
+## Startup query correction
+
+A live Windows task query declared UTF-16 but returned UTF-8 bytes. The parser now supports that output and treats malformed task data as unknown, rather than blocking the quota and conversation response. Five regression cases cover mismatched declarations, real UTF-16, disabled tasks, invalid XML and another app. Read-only live checks confirmed account, conversation, model and quota requests succeed.
+
+The rebuilt startup-fix EXE passed a brief user check after deployment. Full quota recovery and automatic shutdown remain outside that acceptance scope.
